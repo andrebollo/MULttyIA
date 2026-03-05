@@ -429,914 +429,153 @@
     </div>
 
     <script>
-        if (typeof Paho === 'undefined') {
-            alert("Erro Crítico: Não foi possível encontrar o arquivo 'mqttws31.min.js'.");
+    import express from 'express';
+import cors from 'cors';
+import OpenAI from 'openai';
+import dotenv from 'dotenv';
+import { Paho } from 'paho-mqtt';
+
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3000;
+const MQTT_HOST = process.env.MQTT_HOST || 'broker.emqx.io';
+const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8083;
+const MQTT_PATH = process.env.MQTT_PATH || '/mqtt';
+
+// Configuração OpenAI
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// --- MQTT Connection para o Backend (O Backend participa da sala para enviar comandos) ---
+let mqttClient;
+let isConnectedToMQTT = false;
+const myId = "server_agent_" + Math.random().toString(16).substr(2, 8);
+
+// Tópicos
+const getTopic = (room) => `multry/${room}/serial/input`;
+
+// Conecta o backend ao MQTT
+function initMQTT() {
+    const clientId = `multry_server_${Date.now()}`;
+    mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
+
+    mqttClient.onConnectionLost = (responseObject) => {
+        console.log("MQTT Connection Lost:", responseObject.errorMessage);
+        setTimeout(initMQTT, 5000);
+    };
+
+    mqttClient.onMessageArrived = (message) => {
+        const topic = message.destinationName;
+        // O Backend ignora mensagens de chat e presença, foca em receber comandos para a serial
+        if (topic.includes("/serial/output") || topic.includes("/serial/input")) {
+            // O Backend pode receber comandos vindos de outros agentes ou de debug
+            console.log("Backend recebeu dados serial:", topic);
+        }
+    };
+
+    const options = {
+        onSuccess: () => { isConnectedToMQTT = true; console.log("Backend MQTT Connected"); },
+        onFailure: (e) => console.error("MQTT Connection Failed", e),
+        useSSL: false, // Backend não precisa de WSS (local ou mesma rede)
+        mqttVersion: 4
+    };
+
+    mqttClient.connect(options);
+}
+
+initMQTT();
+
+// --- API do Agente ---
+
+// Endpoint para o Frontend enviar dados e perguntas
+app.post('/api/ask', async (req, res) => {
+    try {
+        const { room, username, logs, question } = req.body;
+
+        if (!logs || !question || !room) {
+            return res.status(400).json({ error: "Faltam dados (room, username, logs, question)" });
         }
 
-        const MQTT_HOST = "broker.emqx.io";
-        const MQTT_PORT = 8084;
-        const MQTT_PATH = "/mqtt";
-        let mqttClient = null;
-        let isConnectedToMQTT = false;
-
-        let currentUser = "";
-        let currentRoom = "";
-        let myId = "user_" + Math.random().toString(16).substr(2, 8);
+        // 1. Constrói o Prompt para a IA
+        const systemPrompt = `
+            Você é um Engenheiro de Rede experiente.
+            Analise os logs abaixo de um equipamento conectado serialmente.
+            Se o usuário pedir para investigar um problema (ex: "O IP não pinga"), responda com análise técnica detalhada.
         
-        let serialPort = null;
-        let serialWriter = null;
-        let serialReader = null;
-        let isSerialConnected = false;
-        let serialLockedBy = null; 
-
-        let serialOutBuffer = ""; 
-        let flushTimer = null;
-        const MAX_PACKET_SIZE = 4096;
-        const FLUSH_INTERVAL = 200; 
-
-        const elUsername = document.getElementById('username');
-        const elRoomname = document.getElementById('roomname');
-        elLoginOverlay = document.getElementById('login-overlay');
-        const elMainInterface = document.getElementById('main-interface');
-        const elBtnConnectSerial = document.getElementById('btn-connect-serial');
-        const elAiMessages = document.getElementById('ai-messages');
-        const elAiInput = document.getElementById('ai-msg-input');
-        const elBtnSendAi = document.getElementById('btn-send-ai');
-        const elTerminalOutput = document.getElementById('terminal-output');
-        const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
-        const elUsersList = document.getElementById('users-list');
-        const elSerialLog = document.getElementById('serial-log');
-        const elPasteModal = document.getElementById('paste-modal');
-        const elPasteTextArea = document.getElementById('paste-text-area');
-
-        let users = {};
-
-        // Histórico para a IA (Limitado)
-        let aiHistory = [];
-        const MAX_AI_HISTORY = 20; // Guarda as últimas 10 interações (5 usuário, 5 IA)
-
-        function enterRoom() {
-            const name = elUsername.value.trim();
-            const room = elRoomname.value.trim();
-
-            if (!name || !room) {
-                alert("Por favor, insira Nome e Sala.");
-                return;
-            }
-
-            currentUser = name;
-            currentRoom = room;
-
-            elLoginOverlay.style.display = 'none';
-            elMainInterface.style.display = 'flex';
-            
-            elAiInput.disabled = false;
-            elBtnSendAi.disabled = false;
-            
-            // Mensagem inicial da IA
-            addAiMessage("Olá! Sou sua IA de assistência de rede. Cole logs ou pergunte sobre o equipamento e eu analiso e retornoos comandos para você executar.", 'ai');
-
-            addSystemMessage("Iniciando conexão segura (WSS) com broker emqx.io...", 'system');
-            initMQTT();
-        }
-
-        function initMQTT() {
-            const clientId = "multry_" + myId + "_" + Date.now();
-            mqttClient = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
-
-            mqttClient.onConnectionLost = onConnectionLost;
-            mqttClient.onMessageArrived = onMessageArrived;
-
-            const connectOptions = {
-                onSuccess: onConnect,
-                onFailure: onFailure,
-                useSSL: true,
-                keepAliveInterval: 30,
-                timeout: 10,
-                mqttVersion: 4
-            };
-
-            mqttClient.connect(connectOptions);
-        }
-
-        function onFailure(responseObject) {
-            console.error("Connection failed: ", responseObject);
-            addSystemMessage(`Falha na conexão: ${responseObject.errorMessage || "Erro desconhecido"}`, 'error');
-            elBtnConnectSerial.disabled = false; 
-        }
-
-        function onConnect() {
-            isConnectedToMQTT = true;
-            addSystemMessage("Conectado ao chat com sucesso!", 'system');
-
-            const topicBase = `multry/${currentRoom}`;
-            
-            mqttClient.subscribe(`${topicBase}/chat`);
-            mqttClient.subscribe(`${topicBase}/presence`);
-            mqttClient.subscribe(`${topicBase}/serial/data`);
-            mqttClient.subscribe(`${topicBase}/serial/input`);
-            mqttClient.subscribe(`${topicBase}/serial/lock`);
-
-            publishMessage(`${topicBase}/presence`, JSON.stringify({
-                type: 'join',
-                id: myId,
-                name: currentUser,
-                hasSerial: false
-            }));
-
-            if (!serialLockedBy) {
-                elBtnConnectSerial.disabled = false;
-            }
-
-            focusTerminalInput();
-        }
-
-        function onConnectionLost(responseObject) {
-            isConnectedToMQTT = false;
-            if (responseObject.errorCode !== 0) {
-                addSystemMessage("Desconectado: " + (responseObject.errorMessage || "Erro genérico"), 'error');
-            } else {
-                addSystemMessage("Desconectado do servidor.", 'system');
-            }
-            
-            setTimeout(() => {
-                if (document.getElementById('main-interface').style.display !== 'none') {
-                    addSystemMessage("Tantando reconectar...", 'system');
-                    initMQTT();
-                }
-            }, 5000);
-        }
-
-        function publishMessage(topic, payload) {
-            if (!isConnectedToMQTT) return;
-            try {
-                const message = new Paho.MQTT.Message(payload);
-                message.destinationName = topic;
-                message.qos = 1; 
-                mqttClient.send(message);
-            } catch (e) {
-                console.error("Erro ao enviar msg", e);
-            }
-        }
-
-        function flushSerialBuffer(force = false) {
-            if (serialOutBuffer.length === 0) {
-                if (flushTimer) {
-                    clearTimeout(flushTimer);
-                    flushTimer = null;
-                }
-                return;
-            }
-
-            const topicBase = `multry/${currentRoom}`;
-            const topic = `${topicBase}/serial/data`;
-
-            if (!force) return;
-
-            while (serialOutBuffer.length > 0) {
-                const chunk = serialOutBuffer.substring(0, MAX_PACKET_SIZE);
-                serialOutBuffer = serialOutBuffer.substring(MAX_PACKET_SIZE);
-                
-                publishMessage(topic, chunk);
-                logSerialData(chunk, 'tx');
-            }
-
-            if (flushTimer) {
-                clearTimeout(flushTimer);
-                flushTimer = null;
-            }
-        }
-
-        function onMessageArrived(message) {
-            const topic = message.destinationName;
-            const payload = message.payloadString;
-            const topicBase = `multry/${currentRoom}`;
-
-            try {
-                if (topic === `${topicBase}/chat`) {
-                    const data = JSON.parse(payload);
-                    addChatMessage(data.sender, data.text);
-                }
-                else if (topic === `${topicBase}/presence`) {
-                    const data = JSON.parse(payload);
-                    handlePresence(data);
-                }
-                else if (topic === `${topicBase}/serial/data`) {
-                    if (isSerialConnected) {
-                        logSerialData(payload, 'rx');
-                    // Não mostra no terminal para não duplicar para quem já vê localmente (já mostrado no readSerialLoop)
-                    // Mas adiciona ao log de AI (oculto)
-                    addToAiHistory('assistant', payload); 
-                } else {
-                    processIncomingText(payload); // Mostra para remotos
-                    addToAiHistory('assistant', payload);
-                    logSerialData(payload, 'rx');
-                }
-                else if (topic === `${topicBase}/serial/input`) {
-                    if (isSerialConnected && serialWriter) {
-                        serialWriter.write(payload);
-                        logSerialData(payload, 'tx');
-                    }
-                }
-                else if (topic === `${topicBase}/serial/lock`) {
-                    const data = JSON.parse(payload);
-                    updateSerialLock(data);
-                }
-            } catch (e) {
-                console.error("Erro parse JSON", e);
-            }
-        }
-
-        function sendChat() {
-            const text = elChatInput.value.trim();
-            if (!text) return;
-
-            const topicBase = `multry/${currentRoom}`;
-            const payload = JSON.stringify({ sender: currentUser, text: text });
-            publishMessage(`${topicBase}/chat`, payload);
-            elChatInput.value = '';
-        }
-
-        elChatInput.addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendChat();
-        });
-
-        function addChatMessage(sender, text) {
-            const div = document.createElement('div');
-            div.className = 'msg';
-            div.innerHTML = `<span class="sender">${sender}:</span> ${escapeHtml(text)}`;
-            elChatMessages.appendChild(div);
-            elChatMessages.scrollTop = elChatMessages.scrollHeight;
-        }
-
-        function addSystemMessage(text, type = 'system') {
-            const div = document.createElement('div');
-            div.className = `msg ${type}`;
-            div.textContent = text;
-            elChatMessages.appendChild(div);
-            elChatMessages.scrollTop = elChatMessages.scrollHeight;
-        }
-
-        function handlePresence(data) {
-            if (data.id === myId) return;
-
-            if (data.type === 'join') {
-                if (!users[data.id]) {
-                    users[data.id] = { name: data.name, hasSerial: data.hasSerial };
-                    addSystemMessage(`${data.name} entrou na sala.`);
-                    const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/presence`, JSON.stringify({
-                        type: 'announce',
-                        id: myId,
-                        name: currentUser,
-                        hasSerial: isSerialConnected
-                    }));
-                }
-            } 
-            else if (data.type === 'announce') {
-                users[data.id] = name = data.name; // Atualiza nome
-                users[data.id].hasSerial = data.hasSerial; // Atualiza status da serial
-
-                // Lógica de bloqueio imediato ao entrar
-                if (data.hasSerial) {
-                    updateSerialLock({ action: 'lock', id: data.id, name: data.name });
-                }
-            }
-            else if (data.type === 'leave') {
-                if (users[data.id]) {
-                    addSystemMessage(`${users[data.id].name} saiu da sala.`);
-                    delete users[data.id];
-                }
-            }
-            else if (data.type === 'update_serial') {
-                if (users[data.id]) {
-                    users[data.id].hasSerial = data.hasSerial;
-                    updateSerialLock({ action: 'lock', id: data.id, name: data.name });
-                }
-            }
-            renderUsers();
-        }
-
-        function renderUsers() {
-            elUsersList.innerHTML = '';
-            
-            const meDiv = document.createElement('div');
-            meDiv.className = 'user-item me';
-            meDiv.innerHTML = `
-                ${currentUser} (Eu)
-                <span class="serial-indicator">Serial Conectada</span>
-            `;
-            if (isSerialConnected) meDiv.classList.add('has-serial');
-            elUsersList.appendChild(meDiv);
-
-            for (let id in users) {
-                const u = users[id];
-                const div = document.createElement('div');
-                div.className = 'user-item';
-                div.innerHTML = `
-                    ${u.name}
-                    <span class="serial-indicator">Serial Conectada</span>
-                `;
-                if (u.hasSerial) div.classList.add('has-serial');
-                elUsersList.appendChild(div);
-            }
-        }
-
-        async function connectSerial() {
-            if (!("serial" in navigator)) {
-                alert("Web Serial API não suportada. Use Chrome/Edge/Opera.");
-                return;
-            }
-
-            if (serialLockedBy && serialLockedBy !== myId) {
-                const ownerName = users[serialLockedBy]?.name || "um usuário";
-                alert(`A serial já está conectada por ${ownerName}.`);
-                return;
-            }
-
-            try {
-                serialPort = await navigator.serial.requestPort();
-                await serialPort.open({ baudRate: 9600 });
-
-                const textEncoder = new TextEncoderStream();
-                textEncoder.readable.pipeTo(serialPort.writable).catch(err => console.error("Erro pipe Writable", err));
-                serialWriter = textEncoder.writable.getWriter();
-
-                const textDecoder = new TextDecoderStream();
-                serialPort.readable.pipeTo(textDecoder.writable).catch(err => console.error("Erro pipe Readable", err));
-                const reader = textDecoder.readable.getReader();
-                serialReader = reader;
-
-                isSerialConnected = true;
-                serialOutBuffer = "";
-                if (flushTimer) clearTimeout(flushTimer);
-                flushTimer = null;
-
-                elTerminalOutput.textContent = ""; 
-                addSystemMessage("Aguardando conexão serial...", 'system');
-                logSerialData("--- Serial Conectada ---", 'rx');
-
-                const topicBase = `multry/${currentRoom}`;
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'lock', id: myId, name: currentUser }));
-                    publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: true }));
-                }
-
-                readSerialLoop();
-                window.addEventListener("beforeunload", unlockSerial);
-
-            } catch (err) {
-                console.error(err);
-                addSystemMessage("Erro Serial: " + err.message, 'error');
-            }
-        }
-
-        async function readSerialLoop() {
-            try {
-                while (serialPort.readable && isSerialConnected) {
-                    const { value, done } = await serialReader.read();
-                    
-                    if (done) {
-                        console.log("Stream leitura finalizado.");
-                        break; 
-                    }
-                    
-                    if (value) {
-                        // 1. Mostra local
-                        processIncomingText(value);
-                        // 2. Envia para MQTT
-                        addToAiHistory('assistant', value); // Envia o dado para a IA (contexto)
-                        serialOutBuffer += value;
-
-                        if (flushTimer) {
-                            clearTimeout(flushTimer);
-                        }
-
-                        if (serialOutBuffer.length >= MAX_PACKET_SIZE) {
-                            flushSerialBuffer(true);
-                        } else {
-                            flushTimer = setTimeout(() => {
-                                flushSerialBuffer(true);
-                            }, FLUSH_INTERVAL);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("Erro loop leitura:", error);
-                addSystemMessage("Erro na leitura da serial. Verifique o dispositivo.", 'error');
-            }
-        }
-
-        function unlockSerial() {
-            flushSerialBuffer(true);
-
-            if (!isSerialConnected) return;
-            if (serialWriter) serialWriter.close();
-            if (serialReader) serialReader.cancel();
-            if (serialPort) serialPort.close();
-            isSerialConnected = false;
-            serialPort = null;
-
-            elBtnConnectSerial.textContent = "Conectar Serial";
-            elBtnConnectSerial.disabled = false;
-
-            if (isConnectedToMQTT) {
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'unlock' }));
-                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: false }));
-            }
-        }
-
-        function updateSerialLock(data) {
-            if (data.action === 'lock') {
-                serialLockedBy = data.id;
-                if (data.id !== myId) {
-                    elBtnConnectSerial.disabled = true;
-                    elBtnConnectSerial.textContent = `Serial em uso por ${data.name}`;
-                }
-            } else if (data.action === 'unlock') {
-                if (serialLockedBy === data.id) {
-                    serialLockedBy = null;
-                    if (!isSerialConnected) {
-                        elBtnConnectSerial.disabled = false;
-                        elBtnConnectSerial.textContent = "Conectar Serial";
-                    }
-                }
-            }
-            if (users[data.id]) {
-                users[data.id].hasSerial = (data.action === 'lock');
-                renderUsers();
-            }
-        }
-
-        // --- LÓGICA DE EXIBIÇÃO ---
-        function processIncomingText(text) {
-            for (let i =0; i < text.length; i++) {
-                const char = text.charAt(i);
-                const code = text.charCodeAt(i);
-
-                if (code === 9 || code === 10 || code === 13 || code === 8 || code === 1 || code === 127) {
-                    if (code === 8 || code === 127) {
-                        executeBackspaceOnDOM();
-                    } else {
-                        const span = document.createElement('span');
-                        span.textContent = char;
-                        elTerminalOutput.appendChild(span);
-                    }
-                } else if (code >= 32) {
-                    const span = document.createElement('span');
-                    span.textContent = char;
-                    elTerminalOutput.appendChild(span);
-                }
-            }
-            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
-        }
-
-        function executeBackspaceOnDOM() {
-            const lastChild = elTerminalOutput.lastElementChild;
-            if (lastChild && lastChild.tagName === 'SPAN') {
-                const txt = lastChild.textContent;
-                if (txt.length > 0) {
-                    lastChild.textContent = txt.slice(0, -1);
-                    if (lastChild.textContent.length === 0) {
-                        elTerminalOutput.removeChild(lastChild);
-                    }
-                } else {
-                    elTerminalOutput.removeChild(lastChild);
-                }
-            }
-            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
-        }
-
-        function focusTerminalInput() {
-            elTerminalInputHidden.focus();
-        }
-
-        elTerminalInputHidden.addEventListener('input', (e) => {
-            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
-                e.target.value = ''; 
-                return;
-            }
-
-            if (e.inputType !== "insertText") {
-                e.target.value = '';
-                return;
-            }
-
-            const text = e.data; 
-
-            if (text && text.length === 1) {
-                const code = text.charCodeAt(0);
-                if (code >= 32) {
-                    if (isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/input`, text);
-                    addToAiHistory('user', text);
-                }
-            }
-            e.target.value = '';
-        });
-
-        elTerminalInputHidden.addEventListener('keydown', (e) => {
-            const topicBase = `multry/${currentRoom}`;
-
-            if (e.key === 'Backspace') {
-                e.preventDefault();
-                executeBackspaceOnDOM();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
-                    addToAiHistory('user', '\b');
-                }
-                e.target.value = ''; 
-            } else if (e.key === 'Tab') {
-                e.preventDefault();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\t');
-                    addToAiHistory('user', '\t');
-                }
-                e.target.value = '';
-            } else if (e.key === 'Enter') {
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\r');
-                    addToAiHistory('user', '\r');
-                }
-                e.target.value = '';
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\x1b[A');
-                    addToAiHistory('user', '[UP]');
-                }
-                e.target.value = '';
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[B');
-                e.target.value = '';
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[C');
-                e.target.value = '';
-            } else if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[D');
-                e.target.value = '';
-            }
-        });
-
-        function sendSpecialChar(char) {
-            if (isConnectedToMQTT) {
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/serial/input`, char);
-            }
-            focusTerminalInput();
-        }
-
-        function sendModifiedKey(modifier) {
-            let inputId = (modifier === 'c') ? 'ctrl-char' : 'alt-char';
-            let inputEl = document.getElementById(inputId);
-            if (inputEl) {
-                let char = inputEl.value.toLowerCase();
-                if (char.length === 1) {
-                    let code = char.charCodeAt(0);
-                    let payload = '';
-                    if (modifier === 'c' && code >= 97 && code <= 122) {
-                        payload = String.fromCharCode(code - 96);
-                    } else if (modifier === 'a') {
-                        payload = '\x1b' + char;
-                    }
-                    if (payload && isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/input`, payload);
-                        addToAiHistory('user', payload);
-                        inputEl.value = '';
-                        focusTerminalInput();
-                    }
-                }
-            }
-        }
-
-        // --- AI SYSTEM ---
+        Se você identificar o problema e houver um comando de correção (ex: "sh int gig0/0"), você DEVE enviar esse comando no formato:
+        [CMD]comando[CMD]
+
+        Exemplos de comandos que pode sugerir:
+        - show ip interface
+        - sh int gig0/0
+        - show running-config
         
-        // --- Lógica de Histórico (Controlado para não encher a memória da IA)
-        function addToAiHistory(role, text) {
-            if (!text) return;
-            
-            // Se for texto longo, corta para não enviar tudo para o terminal/IA
-            // Apenas enviamos os últimos ~1000 caracteres para a IA (para contexto) e mostramos no chat/terminal
-            let maxContextLength = 1000;
-            
-            // Armazena no histórico
-            aiHistory.push({ role: role, content: text.substring(0, maxContextLength) });
-            if (aiHistory.length > 20) aiHistory.shift(); // Mantém as últimas 20 mensagens
-            
-            // Mostra no terminal/Log
-            logSerialData(text, role === 'assistant' ? 'rx' : 'tx');
-        }
+        Lógica: Se a resposta contiver um comando no formato [CMD]...[CMD], o sistema extrairá e o enviará para o usuário conectado na serial.
+        Se não houver comando, apenas responda ao usuário com a análise.
+        `;
 
-        // Função para enviar mensagem para o Backend
-        async function sendToAI() {
-            const text = elAiInput.value.trim();
-            if (!text) return;
+        // Histórico de contexto (opcional, melhor para debugging complexo)
+        const conversationHistory = [
+            { role: "system", content: systemPrompt }
+        ];
 
-            elAiInput.value = '';
-            elAiInput.disabled = true;
-            elBtnSendAi.disabled = true;
-            elBtnConnectSerial.disabled = true; // Trava UI enquanto processa
+        // Adiciona a mensagem do usuário com os logs
+        conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs do Sistema:\n${logs}` });
 
-            addToAiHistory('user', text);
-            addAiMessage("Analisando...", 'ai');
-
-            try {
-                // Envia para o Backend (Node.js)
-                const response = await fetch('/api/ai/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        history: aiHistory
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error("Erro ao comunicar com o servidor de IA.");
-                }
-
-                const data = await response.json();
-
-                // Exibe resposta
-                addAiMessage(data.response, 'ai');
-
-                // Checa se a IA enviou um comando
-                // Formato esperado: [CMD]comando[/CMD]
-                const cmdMatch = data.response.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
-
-                if (cmdMatch) {
-                    const command = cmdMatch[1].trim(); // Comando extraído
-
-                    // Envia comando para a serial (através do backend -> MQTT -> Quem tem a serial -> Executa)
-                    const topicBase = `multry/${currentRoom}`;
-                    publishMessage(`${topicBase}/serial/input`, command);
-                    
-                    // Log de TX para os outros verem o que a IA enviou
-                    logSerialData(command, 'tx');
-                } else {
-                    // Apenas mensagem de texto normal
-                    logSerialData(data.response, 'rx');
-                }
-
-            } catch (error) {
-                console.error(error);
-                addSystemMessage("Erro na conexão com o servidor de IA.", 'error');
-                elAiInput.disabled = false;
-                elBtnSendAi.disabled = false;
-            }
-            
-            focusTerminalInput();
-        }
-
-        function addAiMessage(text, type) {
-            const div = document.createElement('div');
-            div.className = `msg ${type}`;
-            
-            if (type === 'ai') {
-                div.innerHTML = `<span class="sender">MULtty AI:</span> ${escapeHtml(text)}`;
-                elAiMessages.appendChild(div);
-            } else if (type === 'user') {
-                div.innerHTML = `<span class="sender">Você:</span> ${escapeHtml(text)}`;
-                elAiMessages.appendChild(div);
-            } else {
-                div.textContent = text;
-                elChatMessages.appendChild(div);
-            }
-            
-            elAiMessages.scrollTop = elAiMessages.scrollHeight;
-        }
-
-        // --- FUNÇÃO COLAR (MODAL) ---
-        function pasteToSerial() {
-            elPasteModal.style.display = 'flex';
-            elPasteTextArea.value = '';
-            elPasteTextArea.focus();
-        }
-
-        function closePasteModal() {
-            elPasteModal.style.display = 'none';
-            focusTerminalInput();
-        }
-
-        function sendPasteText() {
-            const text = elPasteTextArea.value;
-            if (text && text.trim() !== "") {
-                // Envia o texto colado para o chat/terminal para a IA analisar
-                addToAiHistory('user', text);
-                addAiMessage("Analisando dados colados...", 'ai');
-                logSerialData(text, 'tx');
-                
-                // Se for remoto, mostra o que foi colado no terminal também
-                if (!isSerialConnected) {
-                    processIncomingText(text);
-                }
-            }
-            closePasteModal();
-        }
-
-        function logSerialData(data, direction) {
-            const div = document.createElement('div');
-            const timestamp = new Date().toLocaleTimeString();
-            let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
-                const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL', '\x08':'BS', '\x1b':'ESC'};
-                return special[m] ? `{${special[m]}` : `{\\x${m.charCodeAt(0).toString(16)}}`;
-            });
-            div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
-            div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
-            elSerialLog.appendChild(div);
-            elSerialLog.scrollTop = elSerialLog.scrollHeight;
-        }
-
-        function escapeHtml(text) {
-            return text.replace(/[&<>"']/g, function(m) { 
-                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"\'":'&#039;'}[m]; 
-            });
-        }
-
-        // --- LÓGICA DE ENVIO (Serial Loop) ---
-        async function readSerialLoop() {
-            try {
-                while (serialPort.readable && isSerialConnected) {
-                    const { value, done } = await serialReader.read();
-                    
-                    if (done) {
-                        console.log("Stream leitura finalizado.");
-                        break; 
-                    }
-                    
-                    if (value) {
-                        // Mostra local e envia para MQTT
-                        processIncomingText(value);
-                        
-                        serialOutBuffer += value;
-
-                        if (flushTimer) {
-                            clearTimeout(flushTimer);
-                        }
-
-                        if (serialOutBuffer.length >= MAX_PACKET_SIZE) {
-                            flushSerialBuffer(true);
-                        } else {
-                            flushTimer = setTimeout(() => {
-                                flushSerialBuffer(true);
-                            }, FLUSH_INTERVAL);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("Erro loop leitura:", error);
-                addSystemMessage("Erro na leitura da serial. Verifique o dispositivo.", 'error');
-            }
-        }
-
-        function unlockSerial() {
-            flushSerialBuffer(true);
-
-            if (!isSerialConnected) return;
-            if (serialWriter) serialWriter.close();
-            if (serialReader) serialReader.cancel();
-            if (serialPort) serialPort.close();
-            isSerialConnected = false;
-            serialPort = null;
-
-            elBtnConnectSerial.textContent = "Conectar Serial";
-            elBtnConnectSerial.disabled = false;
-
-            if (isConnectedToMQTT) {
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'unlock' }));
-                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: false }));
-            }
-        }
-
-        function focusTerminalInput() {
-            elTerminalInputHidden.focus();
-        }
-
-        // --- TECLADO ---
-        // No mobile, o teclado virtual do sistema não passa eventos complexos para elementos invisíveis. 
-        // Usamos o campo AI (ou o campo de chat visível) para capturar digitação.
-        // Mas para o terminal real, focamos no campo invisível e esperamos o usuário clicar no terminal.
-
-        // Input no Terminal (Invisível) - Para capturar o que é digitado para a IA/Serial
-        elTerminalInputHidden.addEventListener('input', (e) => {
-            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" || e.inputType === "historyUndo" || e.inputType === "historyRedo") {
-                e.target.value = ''; 
-                return;
-            }
-
-            // Apenas envia se for insertText para evitar lixo
-            if (e.inputType !== "insertText") {
-                e.target.value = '';
-                return;
-            }
-
-            const text = e.data; 
-
-            if (text && text.length === 1) {
-                const code = text.charCodeAt(0);
-                if (code >= 32) {
-                    if (isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/input`, text);
-                        addToAiHistory('user', text);
-                    }
-                }
-            }
-            e.target.value = '';
+        // 2. Envia para a OpenAI
+        const completion = await openai.chat.completions({
+            model: "gpt-4o", // Modelo otimizado para análises técnicas
+            messages: conversationHistory,
+            temperature: 0.3, // Mais baixa temp para ser mais analítico
+            max_tokens: 500 // Suficiente para análise e comando
         });
 
-        // Keydown no Terminal (Para Backspace, Enter, Setas e Tab)
-        elTerminalInputHidden.addEventListener('keydown', (e) => {
-            const topicBase = `multry/${currentRoom}`;
+        const aiResponse = completion.choices[0].message.content;
 
-            if (e.key === 'Backspace') {
-                e.preventDefault();
-                executeBackspaceOnDOM();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
-                    addToAiHistory('user', '\b');
-                }
-                e.target.value = ''; 
-            } else if (e.key === 'Tab') {
-                e.preventDefault();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\t');
-                    addToAiHistory('user', '\t');
-                }
-                e.target.value = '';
-            } else if (e.key === 'Enter') {
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\r');
-                    addToAiHistory('user', '\r');
-                }
-                e.target.value = '';
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\x1b[A');
-                    addToAiHistory('user', '[UP]');
-                }
-                e.target.value = '';
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[B');
-                e.target.value = '';
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[C');
-                e.target.value = '';
-            } else if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                if (isConnectedToMQTT) publishMessage(`${topicBase}/serial/input`, '\x1b[D');
-                e.target.value = '';
-            }
-        });
+        // 3. Processa a resposta da IA
+        // Tenta encontrar um comando no formato [CMD]...[/CMD]
+        // CORREÇÃO DA SINTAXE REGEX: 
+        // Simplifiquei o regex para evitar erros de parse e tornar mais robusto
+        // Busca por [CMD] ... [CMD] 
+        const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/g); // Procura globalmente por [CMD]...[/CMD]
 
-        function sendSpecialChar(char) {
-            if (isConnectedToMQTT) {
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/serial/input`, char);
-            }
-            focusTerminalInput();
+        let commandToSend = null;
+        let finalResponse = aiResponse;
+
+        if (cmdMatch) {
+            commandToSend = cmdMatch[1]; // Captura o conteúdo dentro dos colchetes
+            finalResponse = "Comando detectado. Enviando para a serial...";
+        } else {
+            finalResponse = aiResponse;
         }
 
-        function sendModifiedKey(modifier) {
-            let inputId = (modifier === 'c') ? 'ctrl-char' : 'alt-char';
-            let inputEl = document.getElementById(inputId);
-            if (inputEl) {
-                let char = inputEl.value.toLowerCase();
-                if (char.length === 1) {
-                    let code = char.charCodeAt(0);
-                    let payload = '';
-                    if (modifier === 'c' && code >= 97 && code <= 122) {
-                        payload = String.fromCharCode(code - 96);
-                    } else if (modifier === 'a') {
-                        payload = '\x1b' + char;
-                    }
-                    if (payload && isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/input`, payload);
-                        addToAiHistory('user', payload);
-                        inputEl.value = '';
-                        focusTerminalInput();
-                    }
-                }
-            }
+        // 4. Envia o comando para a serial (via MQTT) para o usuário com a porta aberta
+        if (commandToSend) {
+            // O Backend envia o comando para o tópico /serial/input da sala
+            // O usuário conectado à serial receberá isso e executará o comando no hardware
+            const mqttMsg = new Paho.Message(commandToSend);
+            mqttMsg.destinationName = `${room}/serial/input`;
+            mqttMsg.qos = 1;
+            mqttClient.send(mqttMsg);
         }
 
-        window.addEventListener('beforeunload', () => {
-            if (isConnectedToMQTT) {
-                const topicBase = `multry/${currentRoom}`;
-                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'leave', id: myId }));
-                unlockSerial();
-            }
-        });
+        res.json({ response: finalResponse, command: commandToSend });
+
+    } catch (error) {
+        console.error("Erro na OpenAI:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.listen(port, () => {
+    console.log(`Agente IA rodando em http://localhost:${port}`);
+    // Inicia conexão MQTT
+    initMQTT();
+});
     </script>
 </body>
 </html>
