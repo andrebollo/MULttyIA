@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MULtty - Terminal Serial Inteligente</title>
+    <title>MULtty - Terminal Serial Compartilhado com IA</title>
     
-    <!-- Carrega o arquivo LOCAL da biblioteca MQTT -->
-    <script src="mqttws31.min.js" type="text/javascript"></script>
+    <!-- Biblioteca Paho MQTT -->
+    <!-- Certifique que o arquivo mqttws31.min.js está na pasta do projeto local. -->
+    <script src="mqttws31.min.js"></script>
 
     <style>
         :root {
             --bg-color: #1e1e1e;
             --text-color: #e0e0e0;
             --accent-color: #00bcd4;
-            --ai-bg: #2a2a2a;
             --terminal-bg: #000000;
             --terminal-text: #00ff00;
             --chat-bg: #2d2d2d;
-            --border-color: #444;
+            --border-color: // Definição da variável para bordas
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,77 +36,25 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0 20px;
-            background-color: #252526;
-            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            background-color: var(--header-bg, var(--border-color));
             height: 60px;
             flex-shrink: 0;
         }
 
-        /* Overlay de Login */
-        #login-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg-color);
-            z-index: 999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-        }
-
-        .login-box {
-            background-color: #2d2d2d;
-            padding: 30px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            max-width: 600px;
-            width: 90%;
-            text-align: center;
-        }
-
-        .login-title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: var(--accent-color);
-            margin-bottom: 20px;
-        }
-
-        .login-fields {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .instructions-box {
-            background-color: #1a1a1a;
-            padding: 15px;
-            border-radius: 4px;
-            text-align: left;
-            margin-bottom: 20px;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            color: #bbb;
-            border-left: 4px solid var(--accent-color);
-        }
+        .login-area { display: flex; gap: 10px; align-items: center; }
 
         input[type="text"] {
-            padding: 8px 10px;
+            padding: 5px 10px;
             border-radius: 4px;
             border: 1px solid var(--border-color);
             background-color: #3c3c3c;
             color: white;
             outline: none;
-            flex: 1;
         }
 
         button {
-            padding: 8px 16px;
+            padding: 6px 12px;
             border: none;
             border-radius: 4px;
             background-color: var(--accent-color);
@@ -117,12 +65,11 @@
         }
         button:hover:not(:disabled) { opacity: 0.8; }
         button:disabled { background-color: #555; cursor: not-allowed; }
-        button.secondary { background-color: #555; }
 
         .app-title {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #ff4444; 
+            color: #ff4444; /* TÍTULO VERMELHO */
             letter-spacing: 2px;
         }
 
@@ -152,24 +99,19 @@
         .panel-header {
             font-size: 0.8rem;
             text-transform: uppercase;
-            color: #888;
+            color: var(--border-color); /* Ajustado para cor de borda */
             margin-bottom: 5px;
-            border-bottom: 1px solid #333;
             padding-bottom: 2px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
         }
 
-        /* --- AI CHAT SECTION (Novo) --- */
-        #ai-chat-panel {
-            flex: 1; /* Ocupa todo o espaço esquerdo, substituindo o chat antigo */
-            background-color: var(--ai-bg);
-            border-bottom: 1px solid var(--border-color);
+        #chat-panel {
+            flex: 1;
+            background-color: var(--chat-bg);
+            overflow: hidden;
             display: flex;
             flex-direction: column;
         }
-        #ai-messages {
+        #chat-messages {
             flex: 1;
             overflow-y: auto;
             padding: 10px;
@@ -182,33 +124,206 @@
         .msg .sender { font-weight: bold; color: var(--accent-color); }
         .msg.system { color: #ffd700; font-style: italic; font-size: 0.85rem; }
         .msg.error { color: #ff4444; }
-        
-        .msg.ai { color: #81d4fa; }
-        .msg.ai .sender { color: #81d4fa; }
 
-        #ai-input-area {
+        #chat-input-area {
             display: flex;
             padding: 10px;
             background: #252526;
             border-top: 1px solid var(--border-color);
         }
-        #ai-input-area input { flex: 1; }
-        
-        /* Checkbox para enviar logs para a IA */
-        .send-logs-wrapper {
+        #chat-input-area input { flex: 1; }
+
+        #users-panel {
+            height: 150px;
+            background-color: #252526;
+            overflow-y: auto;
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .user-item {
+            padding: 5px 10px;
+            border-bottom: 1px solid #333;
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 10px;
-            margin-top: 5px;
-            font-size: 0.8rem;
-            color: #aaa;
+        }
+        .user-item.me { color: var(--accent-color); font-weight:  bold; }
+        .user-item .serial-indicator {
+            font-size: 0.7rem;
+            background: #4caf50;
+            color: #000;
+            padding: 2px 5px;
+            border-radius: 3px;
+            display: none;
+        }
+        .user-item.has-serial .serial-indicator { display: inline-block; }
+
+        #terminal-panel {
+            flex: 1;
+            background-color: var(--terminal-bg);
+            color: var(--terminal-text);
+            font-family: 'Courier New', Courier, monospace;
+            padding: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 1rem;
+            line-height: 1.2;
+            height: 100%;
         }
 
-        #chat-panel { display: none; /* Oculto se usar IA */ }
+        #terminal-input-hidden {
+            position: absolute;
+            opacity: 0;
+            top: -1000px;
+        }
+        .terminal-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 5px 0;
+            border-top: 1px solid #333;
+            margin-top: 5px;
+        }
+        .control-group { display: flex; gap: 2px; }
+        .control-input { width: 30px !important; padding: 0 !important; text-align: center; }
+        .btn-special { font-size: 0.8rem; background-color: #444; padding: 4px; }
 
-        /* Chat Original (para transferir logs se necessário, ou se desativar IA) */
-        /* Se quiser usar os dois, divida a largura da esquerda em 50% para cada chat */
-        
+        #serial-data-panel {
+            height: 120px;
+            background-color: #1a1a1a;
+            border-top: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #aaa;
+            flex-shrink: 0;
+        }
+        .log-tx { color: #ff6b6b; }
+        .log-rx { color: /* Mantido verde claro para diferenciar TX de RX visual */
+        .log-rx { color: #4ecdc4; }
+        .log-tx { color: #ff6b6b; }
+
+        /* MODAL COLAR */
+        #paste-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #252526;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            color: white;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+        #paste-text-area {
+            width: 100%;
+            height: 250px;
+            background-color: #000;
+            color: var(--terminal-text);
+            border: 1px solid #5555;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 10px;
+            resize: vertical;
+            font-size: 1rem;
+        }
+        .modal-actions {
+            margin-top: 15px;
+            text-align: right;
+        }
+
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; overflow-y: auto; }
+            .left-column, .right-column { width: 100%; border-right: none; height: 50vh; }
+            header { flex-direction: column; height: auto; gap: 10px; padding-bottom: 15px; }
+            .login-area { width: 100%; }
+            .login-area input { flex: 1; }
+            .login-area input { flex: 1; }
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .left-column {
+            width: 33.33%;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            min-width: 300px;
+        }
+
+        .right-column {
+            width: 66.67%;
+            display: flex;
+            flex-direction: 
+        }
+
+        .panel { display: flex; flex-direction: column; padding: 10px; position: relative; }
+
+        .panel-header {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 2px;
+        }
+
+        #chat-panel {
+            flex: 1;
+            background-color: var(--chat-bg);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            font-size: 0.9rem;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .msg { word-wrap: break-word; }
+        .msg .sender { font-weight: bold; color: var(--accent-color); }
+        .msg.system { color: #ffd700; font-style: italic; font-size: 0.85rem; }
+        .msg.error { color: #ff4444; }
+
+        #chat-input-area {
+            display: flex;
+            padding: 10px;
+            background: #252526;
+            border-top: 1px solid var(--border-color);
+        }
+        #chat-input-area input { flex: 1; }
+
         #users-panel {
             height: 150px;
             background-color: #252526;
@@ -250,10 +365,19 @@
             white-space: pre-wrap;
             word-break: break-all;
             font-size: 1rem;
-            line-height:1.2;
+            line-height: 1.2;
             height: 100%;
         }
-        #terminal-input-hidden { position: absolute; opacity: 0; top: -1000px; }
+        #terminal-input-hidden {
+            /* Escondido para não atrapalhar a interatividade do painel */
+            position: absolute;
+            opacity: 1; 
+            pointer-events: none;
+            top: 0; 
+            left: 0;
+            width: 1px;
+            height: 1px;
+        }
         .terminal-controls {
             display: flex;
             flex-wrap: wrap;
@@ -278,17 +402,19 @@
             flex-shrink: 0;
         }
         .log-tx { color: #ff6b6b; }
+        .log-rx { color: /* Mantido verde claro para diferenciar TX de RX */
         .log-rx { color: #4ecdc4; }
 
         /* MODAL COLAR */
         #paste-modal {
             display: none;
             position: fixed;
-            top: 0; left: 0;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
-            z-index: 2000;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
             align-items: center;
             justify-content: center;
         }
@@ -318,59 +444,47 @@
             resize: vertical;
             font-size: 1rem;
         }
-        .modal-actions { margin-top: 15px; text-align: right; }
+        .modal-actions {
+            margin-top: 15px;
+            text-align: right;
+        }
 
         @media (max-width: 768px) {
             .main-container { flex-direction: column; overflow-y: auto; }
             .left-column, .right-column { width: 100%; border-right: none; height: 50vh; }
-            header { flex-direction: column; height: auto; padding: 5px 10px; }
-            .app-title { font-size: 1.2rem; }
+            header { flex-direction: column; height: auto; gap: 10px; padding-bottom: 15px; }
+            .login-area { width: 100%; }
+            .login-area input { flex: 1; }
+            .login-area input { flex: 1; }
         }
     </style>
 </head>
 <body>
 
+    <!-- CABEÇALHO -->
     <header>
-        <div class="app-title">MULtty</div>
-        <div>
-            <button id="btn-connect-serial" onclick="connectSerial()">Conectar Serial</button>
-        </div>
-    </header>
-
-    <!-- QUADRO DE LOGIN -->
-    <div id="login-overlay">
-        <div class="login-box">
-            <div class="login-title">MULtty AI</div>
-            
-            <div class="instructions-box">
-                "Bem-vindo ao MULtty. Esta é uma ferramenta de Terminal Serial Colaborativo com Inteligência Artificial. <br><br>
-                Como funciona:<br>
-                1. Coloque seu nome e entre em uma sala.<br>
-                2. Clique em "Conectar Serial" para conectar seu dispositivo fisico.<br>
-                3. Use o chat à esquerda para conversar com a IA e pedir diagnósticos ou ajudar com configurações.<br>
-                <br>
-                <b>Exemplos de interação:</b><br>
-                - "O meu IP 192.168.1.1 não pinga. O que eu faço?"<br>
-                - "Aqui está a configuração do switch, analyze e diga os comandos para configurar o nome da VLAN."<br>
-                - "Estou recebendo erro 'Access Denied'. Me ajuda a entender."
-            </div>
-
+        <div class="login-area" id="login-area">
             <div class="login-fields">
                 <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
                 <input type="text" id="roomname" placeholder="Sala (ex: sala1)" value="sala1">
                 <button onclick="enterRoom()">Entrar</button>
             </div>
+            
+            <!-- INSTRUÇÕES -->
+            <div class="instructions-box">
+                "Essa página é um terminal serial colaborativo. coloque um nome, entre em uma sala (se não existir ela será criada). Ao entrar o terminal vai aparecer, assim como um chat. Um dos usuários conecta seu navegador a serial através do botão Conectar Serial. Todos na sala poderão interagir com a interface serial. Temos então um terminal serial estilo Putty de uma maneira colaborativa, que pode ser usado para remotamente configurar equipamentos ou monitorar processos."
+            </div>
         </div>
-    </div>
+    </header>
 
     <!-- MODAL DE COLAR SCRIPT -->
     <div id="paste-modal" onclick="if(event.target.id === 'paste-modal') closePasteModal()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h3>Colar Script / Texto</h3>
-            <textarea id="paste-text-area" placeholder="Cole a configuração ou log aqui... (Isso será enviado para a IA analisar)"></textarea>
+            <textarea id="paste-text-area" placeholder="Cole o script ou texto longo aqui..."></textarea>
             <div class="modal-actions">
                 <button class="secondary" onclick="closePasteModal()">Cancelar</button>
-                <button onclick="sendPasteText()">Enviar para IA</button>
+                <button onclick="sendPasteText()">Enviar para Serial</button>
             </div>
         </div>
     </div>
@@ -378,23 +492,21 @@
     <!-- INTERFACE PRINCIPAL -->
     <div class="main-container" id="main-interface" style="display:none;">
         
-        <!-- Coluna Esquerda (IA e Logs) -->
         <div class="left-column">
-            <!-- Chat com IA -->
-            <div class="panel" id="ai-chat-panel">
-                <div class="panel-header">
-                    <span>Chat com IA</span>
-                    <button class="btn-special" onclick="pasteToSerial()" style="font-size: 0.7rem;">Colar Logs</button>
+            <div class="panel" id="chat-panel">
+                <div class="panel-header">Chat</div>
+                <div id="chat-messages"></div>
+                <div id="chat-input-area">
+                    <input type="text" id="chat-msg-input" placeholder="Digite uma mensagem..." disabled>
+                    <button id="btn-send-chat" onclick="sendChat()" disabled>Enviar</button>
                 </div>
-                <div id="ai-messages"></div>
-                <div id="ai-input-area">
-                    <input type="text" id="ai-msg-input" placeholder="Fale com a IA (ex: 'ping 192.168.1.1')" disabled>
-                    <button id="btn-send-ai" onclick="sendToAI()" disabled>Enviar</button>
-                </div>
+            </div>
+            <div class="panel" id="users-panel">
+                <div class="panel-header">Usuários na Sala</div>
+                <div id="users-list"></div>
             </div>
         </div>
 
-        <!-- Coluna Direita (Terminal) -->
         <div class="right-column">
             <div class="panel" id="terminal-panel" onclick="focusTerminalInput()">
                 <div class="panel-header">Terminal</div>
@@ -405,8 +517,8 @@
                     <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[B')">↓</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
+                    <button class="button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
+                    <button class="button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
                     
                     <div class="control-group">
                         <button class="btn-special" onclick="sendModifiedKey('c')">Ctrl+</button>
@@ -429,153 +541,595 @@
     </div>
 
     <script>
-    import express from 'express';
-import cors from 'cors';
-import OpenAI from 'openai';
-import dotenv from 'dotenv';
-import { Paho } from 'paho-mqtt';
+        // --- CONFIGURAÇÃO DE SEGURO PARA MQTT ---
+        const MQTT_HOST = "broker.emqx.io";
+        const MQTT_PORT = 8084; // WSS
+        const MQTT_PATH = "/mqtt";
+        
+        // --- VARIAVEIS GLOBAIS ---
+        let mqttClient = null;
+        let isConnectedToMQTT = false;
+        
+        let currentUser = "";
+        let currentRoom = "";
+        let myId = "user_" + Math.random().toString(16).substr(2, 8);
+        
+        // Serial & AI State
+        let serialPort = null;
+        let serialWriter = null;
+        let serialReader = null;
+        let isSerialConnected = false;
+        let serialLockedBy = null;
 
-dotenv.config();
+        // Buffer e Timers
+        let serialOutBuffer = ""; 
+        let flushTimer = null;
+        const MAX_PACKET_SIZE = 4096;
+        const FLUSH_INTERVAL = 200;
 
-const app = express();
-const port = process.env.PORT || 3000;
-const MQTT_HOST = process.env.MQTT_HOST || 'broker.emqx.io';
-const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8083;
-const MQTT_PATH = process.env.MQTT_PATH || '/mqtt';
+        // Elementos do DOM
+        const elUsername = document.getElementById('username');
+        const elRoomname = document.getElementById('roomname');
+        const elLoginOverlay = document.getElementById('login-overlay');
+        const elMainInterface = document.getElementById('main-interface');
+        const elBtnConnectSerial = document.getElementById('btn-connect-serial');
+        const elChatMessages = document.getElementById('chat-messages');
+        const elChatInput = document.getElementById('chat-msg-input');
+        const elBtnSendChat = document.getElementById('btn-send-chat');
+        const elTerminalOutput = document.getElementById('terminal-output');
+        const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
+        const elUsersList = document.getElementById('users-list');
+        const elSerialLog = document.getElementById('serial-log');
+        const elPasteModal = document.getElementById('paste-modal');
+        const elPasteTextArea = document.getElementById('paste-text-area');
 
-// Configuração OpenAI
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        let users = {};
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+        // --- LÓGICA DE LOGIN ---
+        function enterRoom() {
+            const name = elUsername.value.trim();
+            const room = elRoomname.value.trim();
 
-// --- MQTT Connection para o Backend (O Backend participa da sala para enviar comandos) ---
-let mqttClient;
-let isConnectedToMQTT = false;
-const myId = "server_agent_" + Math.random().toString(16).substr(2, 8);
+            if (!name || !room) {
+                alert("Por favor, insira Nome e Sala.");
+                return;
+            }
 
-// Tópicos
-const getTopic = (room) => `multry/${room}/serial/input`;
+            currentUser = name;
+            currentRoom = room;
 
-// Conecta o backend ao MQTT
-function initMQTT() {
-    const clientId = `multry_server_${Date.now()}`;
-    mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
+            elLoginOverlay.style.display = 'none';
+            elMainInterface.style.display = 'flex';
+            
+            elChatInput.disabled = false;
+            elBtnSendChat.disabled = false;
 
-    mqttClient.onConnectionLost = (responseObject) => {
-        console.log("MQTT Connection Lost:", responseObject.errorMessage);
-        setTimeout(initMQTT, 5000);
-    };
-
-    mqttClient.onMessageArrived = (message) => {
-        const topic = message.destinationName;
-        // O Backend ignora mensagens de chat e presença, foca em receber comandos para a serial
-        if (topic.includes("/serial/output") || topic.includes("/serial/input")) {
-            // O Backend pode receber comandos vindos de outros agentes ou de debug
-            console.log("Backend recebeu dados serial:", topic);
-        }
-    };
-
-    const options = {
-        onSuccess: () => { isConnectedToMQTT = true; console.log("Backend MQTT Connected"); },
-        onFailure: (e) => console.error("MQTT Connection Failed", e),
-        useSSL: false, // Backend não precisa de WSS (local ou mesma rede)
-        mqttVersion: 4
-    };
-
-    mqttClient.connect(options);
-}
-
-initMQTT();
-
-// --- API do Agente ---
-
-// Endpoint para o Frontend enviar dados e perguntas
-app.post('/api/ask', async (req, res) => {
-    try {
-        const { room, username, logs, question } = req.body;
-
-        if (!logs || !question || !room) {
-            return res.status(400).json({ error: "Faltam dados (room, username, logs, question)" });
+            initMQTT();
         }
 
-        // 1. Constrói o Prompt para a IA
-        const systemPrompt = `
-            Você é um Engenheiro de Rede experiente.
-            Analise os logs abaixo de um equipamento conectado serialmente.
-            Se o usuário pedir para investigar um problema (ex: "O IP não pinga"), responda com análise técnica detalhada.
-        
-        Se você identificar o problema e houver um comando de correção (ex: "sh int gig0/0"), você DEVE enviar esse comando no formato:
-        [CMD]comando[CMD]
+        function initMQTT() {
+            // O ID do cliente MQTT precisa ser único e ter sido criado dinamicamente.
+            const clientId = "multry_" + Math.random().toString(16).substr(2, 8) + "_" + Date.now();
 
-        Exemplos de comandos que pode sugerir:
-        - show ip interface
-        - sh int gig0/0
-        - show running-config
-        
-        Lógica: Se a resposta contiver um comando no formato [CMD]...[CMD], o sistema extrairá e o enviará para o usuário conectado na serial.
-        Se não houver comando, apenas responda ao usuário com a análise.
-        `;
+            mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
 
-        // Histórico de contexto (opcional, melhor para debugging complexo)
-        const conversationHistory = [
-            { role: "system", content: systemPrompt }
-        ];
+            mqttClient.onConnectionLost = onConnectionLost;
+            mqttClient.onMessageArrived = onMessageArrived;
 
-        // Adiciona a mensagem do usuário com os logs
-        conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs do Sistema:\n${logs}` });
+            const connectOptions = {
+                onSuccess: onConnect,
+                onFailure: onFailure,
+                useSSL: true, // WSS (Porta 8084)
+                keepAliveInterval: 30,
+                timeout: 10,
+                mqttVersion: 4
+            };
 
-        // 2. Envia para a OpenAI
-        const completion = await openai.chat.completions({
-            model: "gpt-4o", // Modelo otimizado para análises técnicas
-            messages: conversationHistory,
-            temperature: 0.3, // Mais baixa temp para ser mais analítico
-            max_tokens: 500 // Suficiente para análise e comando
+            mqttClient.connect({ host: MQTT_HOST, port: MQTT_PORT, path: MQTT_PATH, connectOptions });
+        }
+
+        function onFailure(responseObject) {
+            console.error("Connection failed: ", responseObject);
+            addSystemMessage(`Falha na conexão: ${responseObject.errorMessage || "Erro desconhecido"}`, 'error');
+            elBtnConnectSerial.disabled = false; 
+            setTimeout(() => {
+                if (document.getElementById('main-interface').style.display !== 'none') {
+                    addSystemMessage("Tentando reconectar...", 'system');
+                    initMQTT();
+                }
+            }, 5000);
+        }
+
+        function onConnect() {
+            isConnectedToMQTT = true;
+            addSystemMessage("Conectado ao chat com sucesso!", 'system');
+
+            const topicBase = `multry/${currentRoom}`;
+            
+            mqttClient.subscribe(`${topicBase}/chat`);
+            mqttClient.subscribe(`${topicBase}/presence`);
+            mqttClient.subscribe(`${topicBase}/serial/data`);
+            mqttClient.subscribe(`${topicBase}/serial/input`);
+            mqttClient.subscribe(`${topicBase}/serial/lock`);
+            mqttClient.subscribe(`${topicBase}/serial/output`); // O Backend também ouvirá os dados e lidará com a IA.
+
+            publishMessage(`${topicBase}/presence`, JSON.stringify({
+                type: 'join',
+                id: myId,
+                name: currentUser,
+                hasSerial: false
+            }));
+
+            if (!serialLockedBy) {
+                elBtnConnectSerial.disabled = false;
+            }
+
+            focusTerminalInput();
+        }
+
+        function onConnectionLost(responseObject) {
+            isConnectedToMQTT = false;
+            if (responseObject.errorCode !== 0) {
+                addSystemMessage("Desconectado: " + (responseObject.errorMessage || "Erro genérico"), 'error');
+            } else {
+                addSystemMessage("Desconectado do servidor.", 'system');
+            }
+            
+            setTimeout(() => {
+                if (document.getElementById('main-interface').style.display !== 'none') {
+                    addSystemMessage("Tentando reconectar...", 'system');
+                    initMQTT();
+                }
+            }, 5000);
+        }
+
+        function publishMessage(topic, payload) {
+            if (!isConnectedToMQTT) return;
+            try {
+                const message = new Paho.Message(payload);
+                message.destinationName = topic;
+                message.qos = 1; 
+                mqttClient.send(message);
+            } catch (e) {
+                console.error("Erro ao enviar msg", e);
+            }
+        }
+
+        function onMessageArrived(message) {
+            const topic = message.destinationName;
+            const payload = message.payloadString;
+            const topicBase = `multry/${currentRoom}`;
+
+            try {
+                if (topic === `${topicBase}/chat`) {
+                    const data = JSON.parse(payload);
+                    addChatMessage(data.sender, data.text);
+                }
+                else if (topic === `${topicBase}/presence`) {
+                    const data = JSON.parse(payload);
+                    handlePresence(data);
+                }
+                else if (topic === `${topicBase}/serial/data`) {
+                    // Se eu sou conectado, mando visualização local e envio para MQTT. Se for remoto, visualiza RX.
+                    if (isSerialConnected) {
+                        logSerialData(payload, 'rx'); 
+                        // O backend cuida de enviar o RX para os outros.
+                        const topic = `${topicBase}/serial/data`;
+                        publishMessage(topic, payload);
+                    } else {
+                        processIncomingText(payload);
+                        logSerialData(payload, 'rx');
+                    }
+                }
+                else if (topic === `${topicBase}/serial/input`) {
+                    if (isSerialConnected && serialWriter) {
+                        serialWriter.write(payload);
+                        logSerialData(payload, 'tx');
+                    }
+                }
+                else if (topic === `${topicBase}/serial/lock`) {
+                    const data = JSON.parse(payload);
+                    updateSerialLock(data);
+                }
+            } catch (e) {
+                console.error("Erro parse JSON", e);
+            }
+        }
+
+        function sendChat() {
+            const text = elChatInput.value.trim();
+            if (!text) return;
+
+            const topicBase = `multry/${currentRoom}`;
+            const payload = JSON.stringify({ sender: currentUser, text: text });
+            publishMessage(`${topicBase}/chat`, payload);
+            elChatInput.value = '';
+        }
+
+        elChatInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') sendChat();
         });
 
-        const aiResponse = completion.choices[0].message.content;
-
-        // 3. Processa a resposta da IA
-        // Tenta encontrar um comando no formato [CMD]...[/CMD]
-        // CORREÇÃO DA SINTAXE REGEX: 
-        // Simplifiquei o regex para evitar erros de parse e tornar mais robusto
-        // Busca por [CMD] ... [CMD] 
-        const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/g); // Procura globalmente por [CMD]...[/CMD]
-
-        let commandToSend = null;
-        let finalResponse = aiResponse;
-
-        if (cmdMatch) {
-            commandToSend = cmdMatch[1]; // Captura o conteúdo dentro dos colchetes
-            finalResponse = "Comando detectado. Enviando para a serial...";
-        } else {
-            finalResponse = aiResponse;
+        function addChatMessage(sender, text) {
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerHTML = `<span class="sender">${sender}:</span> ${escapeHtml(text)}`;
+            elChatMessages.appendChild(div);
+            elChatMessages.scrollTop = elChatMessages.scrollHeight;
         }
 
-        // 4. Envia o comando para a serial (via MQTT) para o usuário com a porta aberta
-        if (commandToSend) {
-            // O Backend envia o comando para o tópico /serial/input da sala
-            // O usuário conectado à serial receberá isso e executará o comando no hardware
-            const mqttMsg = new Paho.Message(commandToSend);
-            mqttMsg.destinationName = `${room}/serial/input`;
-            mqttMsg.qos = 1;
-            mqttClient.send(mqttMsg);
+        function addSystemMessage(text, type = 'system') {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.textContent = text;
+            elChatMessages.appendChild(div);
+            elChatMessages.scrollTop = elChatMessages.scrollHeight;
         }
 
-        res.json({ response: finalResponse, command: commandToSend });
+        function handlePresence(data) {
+            if (data.id === myId) return;
 
-    } catch (error) {
-        console.error("Erro na OpenAI:", error);
-        res.status(500).json({ error: error.message });
-    }
-});
+            if (data.type === 'join') {
+                if (!users[data.id]) {
+                    users[data.id] = { name: data.name, hasSerial: data.hasSerial };
+                    addSystemMessage(`${data.name} entrou na sala.`);
+                    const topicBase = `multry/${currentRoom}`;
+                    publishMessage(`${topicBase}/presence`, JSON.stringify({
+                        type: 'announce',
+                        id: myId,
+                        name: currentUser,
+                        hasSerial: isSerialConnected
+                    }));
+                }
+            } else if (data.type === 'announce') {
+                users[data.id] = { name: data.name, hasSerial: data.hasSerial };
+                if (data.hasSerial) updateSerialLock({ action: 'lock', id: data.id, name: data.name });
+            }
+            renderUsers();
+        }
 
-app.listen(port, () => {
-    console.log(`Agente IA rodando em http://localhost:${port}`);
-    // Inicia conexão MQTT
-    initMQTT();
-});
+        function renderUsers() {
+            elUsersList.innerHTML = '';
+            
+            const meDiv = document.createElement('div');
+            meDiv.className = 'user-item me';
+            meDiv.innerHTML = `
+                ${currentUser} (Eu)
+                <span class="serial-indicator">Serial Conectada</span>
+            `;
+            if (isSerialConnected) meDiv.classList.add('has-serial');
+            elUsersList.appendChild(meDiv);
+
+            for (let id in users) {
+                const u = users[id];
+                const div = document.createElement('div');
+                div.className = 'user-item';
+                div.innerHTML = `
+                    ${u.name}
+                    <span class="serial-indicator">Serial Conectada</span>
+                `;
+                if (u.hasSerial) div.classList.add('has-serial');
+                elUsersList.appendChild(div);
+            }
+        }
+
+        // --- SERIAL & TERMINAL LOGIC ---
+        async function connectSerial() {
+            if (!("serial" in navigator)) {
+                alert("Web Serial API não suportada. Use Chrome/Edge/Opera.");
+                return;
+            }
+
+            // Check de bloqueio (Sem backend, apenas 1 usuário por vez)
+            if (serialLockedBy && serialLockedBy !== myId) {
+                const ownerName = users[serialLockedBy]?.name || "um usuário";
+                alert(`Serial em uso por ${ownerName}.`);
+                return;
+            }
+
+            try {
+                serialPort = await navigator.serial.requestPort();
+                await serialPort.open({ baudRate: 9600 });
+
+                const textEncoder = new TextEncoderStream();
+                textEncoder.readable.pipeTo(serialPort.writable).catch(err => console.error("Erro pipe Writable", err));
+                serialWriter = textEncoder.writable.getWriter();
+
+                const textDecoder = new TextDecoderStream();
+                serialPort.readable.pipeTo(textDecoder.writable).catch(err => console.error("Erro pipe Readable", err));
+                const reader = textDecoder.readable.getReader();
+                serialReader = reader;
+
+                isSerialConnected = true;
+                serialOutBuffer = "";
+                if (flushTimer) clearTimeout(flushTimer);
+                flushTimer = null;
+
+                elBtnConnectSerial.textContent = "Serial Conectada";
+                elBtnConnectSerial.disabled = true;
+                elTerminalOutput.textContent = ""; 
+                addSystemMessage("Conexão Serial local estabelecida.", 'system');
+                logSerialData("--- Serial Conectada ---", 'rx');
+
+                const topicBase = `multry/${currentRoom}`;
+                if (isConnectedToMQTT) {
+                    // Envia Lock
+                    publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'lock', id: myId, name: currentUser }));
+                    publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: true }));
+                }
+
+                readSerialLoop();
+                window.addEventListener("beforeunload", unlockSerial);
+            } catch (err) {
+                console.error(err);
+                addSystemMessage("Erro Serial: " + err.message, 'error');
+            }
+        }
+
+        async function readSerialLoop() {
+            try {
+                while (serialPort.readable && isSerialConnected) {
+                    const { value, done } = await serialReader.read();
+                    
+                    if (done) { break; }
+                    
+                    if (value) {
+                        // 1. Visual Local (Imediato)
+                        processIncomingText(value);
+                        
+                        // 2. Buffering de Envio para IA
+                        serialOutBuffer += value;
+                        
+                        if (flushTimer) clearTimeout(flushTimer);
+                        
+                        // Envio se buffer cheio ou lotado de 2KB
+                        if (serialOutBuffer.length >= 4096) {
+                            flushSerialBuffer(true);
+                        } else {
+                            flushTimer = setTimeout(() => {
+                                flushSerialBuffer(true);
+                            }, FLUSH_INTERVAL); // 2 segundos para aguardar um pouco de tráfego
+                            elBtnConnectSerial.disabled = false; 
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Erro loop leitura:", error);
+                addSystemMessage("Erro na leitura da serial. Verifique o dispositivo.", 'error');
+            }
+        }
+
+        function unlockSerial() {
+            // Envia o que sobrou no buffer antes de desconectar
+            flushSerialBuffer(true);
+
+            if (!isSerialConnected) return;
+            if (serialWriter) serialWriter.close();
+            if (serialReader) serialReader.cancel();
+            if (serialPort) serialPort.close();
+            isSerialConnected = false;
+            serialPort = null;
+
+            elBtnConnectSerial.textContent = "Conectar Serial";
+            elBtnConnectSerial.disabled = false;
+
+            if (isConnectedToMQTT) {
+                const topicBase = `multry/${currentRoom}`;
+                publishMessage(`${topicBase}/serial/lock`, JSON.stringify({ action: 'unlock' }));
+                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'update_serial', id: myId, hasSerial: false }));
+            }
+        }
+
+        function updateSerialLock(data) {
+            if (data.action === 'lock') {
+                serialLockedBy = data.id;
+                if (data.id !== myId) {
+                    elBtnConnectSerial.disabled = true;
+                    elBtnConnectSerial.textContent = `Serial em uso por ${data.name}`;
+                }
+            } else if (data.action === 'unlock') {
+                if (serialLockedBy === data.id) {
+                    serialLockedBy = null;
+                    if (!isSerialConnected) {
+                        elBtnConnectSerial.disabled = false;
+                        elBtnConnectSerial.textContent = "Conectar Serial";
+                    }
+                }
+            }
+            if (users[data.id]) {
+                users[data.id].hasSerial = (data.action === 'lock');
+                renderUsers();
+            }
+        }
+
+        // --- VISUALIZAÇÃO E PROCESSAMENTO DE TEXTO (RX) ---
+        function processIncomingText(text) {
+            for (let i =0; i < text.length; i++) {
+                const char = text.charAt(i);
+                const code = text.charCodeAt(i);
+
+                // Filtro de caracteres de controle:
+                // TAB(9), LF(10), CR(13), BS(8), DEL(127) ou imprimíveis (>31)
+                if (code === 9 || code === 10 || code === 13 || code === 8 || code === 127) {
+                    if (code === 8 || code === 127) {
+                        executeBackspaceOnDOM();
+                    } else {
+                        const span = document.createElement('span');
+                        span.textContent = char;
+                        elTerminalOutput.appendChild(span);
+                    }
+                } else if (code >= 32) {
+                    const span = document.createElement('span');
+                    span.textContent = char;
+                    elTerminalOutput.appendChild(span);
+                }
+            }
+            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+        }
+
+        function executeBackspaceOnDOM() {
+            const lastChild = elTerminalOutput.lastElementChild;
+            if (lastChild && lastChild.tagName === 'SPAN') {
+                const txt = lastChild.textContent;
+                if (txt.length > 0) {
+                    lastChild.textContent = txt.slice(0, -1);
+                    if (lastChild.textContent.length === 0) {
+                        elTerminalOutput.removeChild(lastChild);
+                    }
+                } else {
+                    elTerminalOutput.removeChild(lastChild);
+                }
+            }
+            elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+        }
+
+        function focusTerminalInput() {
+            elTerminalInputHidden.focus();
+        }
+
+        // --- TRATAMENTO DE TECLADO (TX) ---
+        elTerminalInputHidden.addEventListener('input', (e) => {
+            // Bloqueia qualquer evento de deleção automático do browser (Tab/Backspace em campo invisível)
+            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
+                // Não faz nada, pois já tratado no keydown
+                e.target.value = '';
+                return;
+            }
+
+            // Se for insertText, envia para serial
+            if (e.inputType === "insertText") {
+                const text = e.data || e.target.value;
+                if (text) {
+                    if (isConnectedToMQTT) {
+                        const topicBase = `multry/${currentRoom}`;
+                        publishMessage(`${topicBase}/serial/input`, text);
+                    }
+                    // Limpa campo
+                    e.target.value = '';
+                }
+            }
+        });
+
+        // Evento KeyDown (Enter, Backspace, Tab, Setas)
+        elTerminalInputHidden.addEventListener('keydown', (e) => {
+            const topicBase = `multry/${currentRoom}`;
+
+            if (e.key === 'Backspace') {
+                e.preventDefault(); 
+                // Visual
+                executeBackspaceOnDOM();
+                // Envia Backspace
+                if (isConnectedToMQTT) {
+                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
+                }
+                e.target.value = ''; 
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                if (isConnectedToMQTT) {
+                    publishMessage(`${topicBase}/serial/input`, '\t');
+                }
+                e.target.value = '';
+            } else if (e.key === 'Enter') {
+                if (isConnectedToMQTT) {
+                    publishMessage(`${topicBase}/serial/input`, '\r');
+                }
+                e.target.value = '';
+            }
+        });
+
+        // Setas e Outras Teclas
+        function sendSpecialChar(char) {
+            if (isConnectedToMQTT) {
+                const topicBase = `multry/${currentRoom}`;
+                publishMessage(`${topicBase}/serial/input`, char);
+            focusTerminalInput();
+        }
+
+        function sendModifiedKey(modifier) {
+            let inputId = (modifier === 'c') ? 'ctrl-char' : 'alt-char';
+            let inputEl = document.getElementById(inputId);
+            if (inputEl) {
+                let char = inputEl.value.toLowerCase();
+                if (char.length === 1) {
+                    let code = char.charCodeAt(0);
+                    let payload = '';
+                    if (modifier === 'c' && code >= 97 && code <= 122) {
+                        payload = String.fromCharCode(code - 96);
+                    } else if (modifier === 'a') {
+                        payload = '\x1b' + char;
+                    }
+                    if (payload && isConnectedToMQTT) {
+                        const topicBase = `multry/${currentRoom}`;
+                        publishMessage(`${topicBase}/serial/input`, payload);
+                        inputEl.value = '';
+                        focusTerminalInput();
+                    }
+                }
+            }
+        }
+
+        // Função Colar (Modal)
+        function pasteToSerial() {
+            elPasteModal.style.display = 'flex';
+            elPasteTextArea.value = '';
+            elPasteTextArea.focus();
+        }
+
+        function closePasteModal() {
+            elPasteModal.style.display = 'none';
+            focusTerminalInput();
+        }
+
+        function sendPasteText() {
+            const text = elPasteTextArea.value;
+            if (text && text.trim() !== "") {
+                if (isConnectedToMQTT) {
+                    const topicBase = `multry/${currentRoom}`;
+                    const topic = `${topicBase}/serial/input`;
+                    const CHUNK_SIZE = 1024; 
+                    
+                    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+                        const chunk = text.substring(i, i + CHUNK_SIZE);
+                        publishMessage(topic, chunk);
+                        logSerialData(chunk, 'tx');
+                    }
+                    
+                    if (!isSerialConnected) {
+                        // Visualiza o que foi colado apenas para quem colou
+                        processIncomingText(text);
+                    }
+                }
+            }
+            closePasteModal();
+        }
+
+        // --- LOGS E DEBUG ---
+        function logSerialData(data, direction) {
+            const div = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString();
+            let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
+                const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL', '\x08':'BS', '\x1b':'ESC'};
+                return special[m] ? `{${special[m]}` : `{\\x${m.charCodeAt(0).toString(16)}}`;
+            });
+            div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
+            div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
+            elSerialLog.appendChild(div);
+            elSerialLog.scrollTop = elSerialLog.scrollTop = elSerialLog.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/[&<>"']/g, function(m) { 
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"\'':'&#039;'}[m]; 
+            });
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (isConnectedToMQTT) {
+                const topicBase = `multry/${currentRoom}`;
+                publishMessage(`${topicBase}/presence`, JSON.stringify({ type: 'leave', id: myId }));
+                unlockSerial();
+            }
+        });
     </script>
 </body>
 </html>
