@@ -47,7 +47,6 @@ function startMQTT() {
     };
 
     mqttClient.connect({ host, port, path, clientId, options });
-}
 
 // Inicializa o MQTT assim que o servidor inicie antes das outras chamadas
 startMQTT();
