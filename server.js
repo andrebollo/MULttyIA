@@ -1,14 +1,8 @@
-// Configurações MQTT
-const MQTT_HOST = "broker.emqx.io";
-const MQTT_PORT = 8084; // Porta WSS para EMQX
-const MQTT_PATH = "/mqtt";
-
-// --- CONFIGURAÇÃO DO SERVER (Node.js) ---
 import express from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
-import Paho from 'paho-mqtt'; // Importação corrigida (usa biblioteca instalada)
+import Paho from 'paho-mqtt'; // Importa a versão instalada localmente
 import * as fs from 'fs';
 import path from 'path';
 dotenv.config();
@@ -16,26 +10,26 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const MQTT_HOST = process.env.MQTT_HOST || "broker.emqx.io";
-const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8084; // Usa 8084 (WSS)
+const MQTT_PORT = process.env.MQTT_PORT || 8083;
 const MQTT_PATH = process.env.MQTT_PATH || "/mqtt";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true });
 
 let mqttClient;
 let isConnectedToMQTT = false;
 const myId = "server_agent_" + Math.random().toString(16).substr(2, 8);
-let currentSubscribedRooms = new Set(); // Acompanhará salas ativas (estatísticas simples)
+let currentSubscribedRooms = new Set();
 
 function startMQTT() {
     const clientId = `multry_server_${Date.now()}`;
-    // Usa o import 'paho-mqtt' (versão 2.0.0)
+    // Uso Paho diretamente
     mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
 
-    mqttClient.onConnectionLost = (responseObject) => {
+    mqttClient.onConnectionLost = (responseObject) {
         console.log("MQTT Connection Lost:", responseObject.errorMessage);
         setTimeout(startMQTT, 5000);
     };
@@ -44,13 +38,12 @@ function startMQTT() {
         onSuccess: () => {
             isConnectedToMQTT = true;
             console.log("Backend MQTT Connected");
-            mqttClient.subscribe(`multry/+/serial/input`);
+            mqttClient.subscribe(`multry/+/serial/input`); // Inscreve no tópico global para receber comandos de todos os canais
         },
         onFailure: (err) => console.error("MQTT Connection Failed", err),
         keepAliveInterval: 30,
         timeout: 10,
-        mqttVersion: 4,
-        useSSL: true
+        mqttVersion: 4
     };
 
     mqttClient.connect({ host: MQTT_HOST, port: MQTT_PORT, path: MQTT_PATH, options });
@@ -59,90 +52,86 @@ function startMQTT() {
 startMQTT();
 
 // --- API do Agente ---
-app.post('/api/add-user-log', async (req, res) {
-    // Endpoint que o frontend chama periodicamente para enviar os logs
-    try {
-        const { room, log } = req.body;
-        if (!room || !log) return res.status(400).json({ error: "Faltam dados" });
-        
-        // Envia os logs para o Backend via MQTT (O Backend é o que tem a chave OpenAI)
-        const topic = `${room}/logs`; // Tópico especial para logs
-        const mqttMsg = new Paho.Message(log);
-        mqttMsg.destinationName = topic;
-        mqttMsg.qos = 1;
-        mqttClient.send(mqttMsg);
-        
-        res.json({ status: "success" });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
+
+// Buffer para armazenar logs antes de enviar para a IA
+let serialLogBuffer = [];
+let logFlushTimer = null;
+const MAX_LOG_LINES = 50; 
+const CHUNK_SIZE = 1024; // Tamanho seguro por chunk
 
 app.post('/api/ask', async (req, res) {
     try {
-        const { room, username, question } = req.body;
-        
-        // Busca os últimos logs no Backend através do endpoint '/add-user-log'
-        // (O Backend deve salvar os logs em memória temporária)
-        if (!room) return res.status(400).json({ error: "Sala não informada." });
-        
-        // Simulação de busca de memória (substitua `fs.readFileSync` por um array em memória se for local)
-        // Para simplificar, vamos apenas acumular em uma string para sessão em memória
-        if (!globalLogs[room]) globalLogs[room] = "";
-        
-        globalLogs[room] += `${new Date().toLocaleTimeString()} - ${room}: ${currentUser}: ${question}\n`;
-        
-        const finalLogs = globalLogs[room]; // Usa os logs acumulados
-        const lastLogs = finalLogs.split('\n').slice(-30).join('\n'); // Últimos logs para a IA
-        
+        const { room, username, logs, question } = req.body;
+
+        if (!logs || !question || !room) {
+            return res.status(400).json({ error: "Faltam dados (room, username, logs, question)" });
+        }
+
         const systemPrompt = `
             Você é um Engenheiro de Rede experiente.
-            Analise os logs abaixo (capturados pelo Backend) para sugerir correções.
-            Se identificar um problema, envie o comando no formato [CMD]comando[CMD].
+            Analise os logs abaixo de um equipamento conectado serialmente.
+            Se o usuário pedir para investigar um problema (ex: "O IP não pinga"), responda com análise técnica detalhada.
+            Se você identificar o problema e houver um comando de correção, envie o comando no formato: [CMD]comando[CMD].
         `;
-        
+
         const conversationHistory = [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Nome: ${username}\nLogs:\n${lastLogs}` }
+            { role: "system", content: systemPrompt }
         ];
+
+        conversationHistory.push({ role: "user", content: `Nome: 
+        ${username}\nLogs do Sistema:\n${logs}` });
 
         const completion = await openai.chat.completions({
             model: "gpt-4o", 
-            messages: conversationHistory,
-            temperature: 0.3,
-            max_tokens: 500
-        });
+            messages: tratamento básico de logs: filtra os logs recebidos (últimos 30 linhas) para não estourar a API da OpenAI.
+            const MAX_LOG_LINES = 30; // Limite para API
+            const logsChunk = serialLogBuffer.slice(-MAX_LOG_LINES).join('\n');
+            conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs (Recentes):\n${logsChunk}` });
 
-        const aiResponse = completion.choices[0].message.content;
-        
-        // Regex para extrair comandos
-        // Aceita [CMD]...[/CMD] (com colchetes literais "[]")
-        const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/g); 
-        
-        let commandToSend = null;
-        let finalResponse = aiResponse;
-        
-        if (cmdMatch) {
-            commandToSend = cmdMatch[1];
-            finalResponse = "Comando detectado. Enviando para a serial...";
-        } else {
-            finalResponse = aiResponse;
+            const completion = await openai.chat.completions({
+                model: "gpt-4o", 
+                messages: conversationHistory,
+                temperature: 0.3,
+                max_tokens: 500
+            });
+
+            const aiResponse = completion.choices[0].message.content;
+
+            // Regex para extrair comandos [CMD]...[/CMD]
+            const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/g);
+            
+            let commandToSend = null;
+            let finalResponse = aiResponse;
+
+            if (cmdMatch) {
+                commandToSend = cmdMatch[1];
+                finalResponse = "Comando detectado. Enviando para a serial...";
+            } else {
+                finalResponse = aiResponse;
+            }
+
+            // Envia o comando para o tópico da sala
+            if (commandToSend) {
+                // Divide o comando em pedaços se for muito grande
+                for (let i = 0; i < commandToSend.length; i += CHUNK_SIZE) {
+                    const chunk = commandToSend.substring(i, i + CHUNK_SIZE);
+                    // Envia via MQTT
+                    const topic = `${room}/serial/input`;
+                    const mqttMsg = new Paho.Message(chunk);
+                    mqttMsg.qos = 1;
+                    mqttClient.send(mqttMsg);
+                }
+            }
         }
-
-        // Se houver comando, envia para a serial via MQTT
-        if (commandToSend) {
-            // Envia para sala/serial/input
-            const topic = `${room}/serial/input`;
-            const mqttMsg = new Paho.Message(commandToSend);
-            mqttMsg.qos = 1;
-            mqttClient.send(mqttMsg);
-        }
-
-        res.json({ response: finalResponse, command: // Removei o `command` do JSON de retorno para não ficar exposta
-            response: finalResponse
-        });
+        
+        res.json({ response: finalResponse, command: commandToSend });
+    } catch (error) {
+        console.error("Erro na OpenAI:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.listen(port, () => {
-    console.log(`Servidor rodando em http://localhost:${port}`);
+    console.log(`Agente IA rodando em http://localhost:${port}`);
     startMQTT();
 });
