@@ -22,7 +22,7 @@ function startMQTT() {
     // Use string vazia ou valor padrão para host e path
     // Emqx.io suporta "broker.emqx.io" em WSS (Porta 8084) e "/mqtt" é o padrão.
     const host = process.env.MQTT || "broker.emqx.io";
-    const port = parseInt(process.env.MQTT_PORT || 8084;
+    const port = parseInt(process.env.MQTT_PORT || 8084);
     const path = process.env.MQTT || "/mqtt";
     
     const clientId = `multry_server_${Date.now()}`;
