@@ -25,7 +25,7 @@ function startMQTT() {
     const port = parseInt(process.env.MQTT_PORT || 8084);
     const path = process.env.MQTT || "/mqtt";
     
-    const clientId = `multry_server_${Date.now();
+    const clientId = multry_server_$Date.now();
     mqttClient = new Paho.Client(host, port, path, clientId);
 
     mqttClient.onConnectionLost = (responseObject);
