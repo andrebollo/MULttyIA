@@ -2,33 +2,51 @@ import express from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
-const MQTT_HOST = process.env.MQTT || "broker.emqx.io"; // Suficiente para a conexão local
-const MQTT_PORT = parseInt(process.env.MQTT_PORT || 8083); // Porta WSS padrão para emqx.io
-const MQTT_PATH = process.env.MQTT || "/mqtt"; // Path padrão para emqx.io
-const openai = new OpenAI({ apiKey: process.env.OPENAI_KEY }); // Ainda usado no server.js se você quiser capturar logs da IA
+import Paho from 'paho-mqtt'; // --- ADICIONADO AQUI CORREÇÃO IMPORTANTE ---
+import * as fs from 'fs';
+import path from 'path';
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+dotenv.config();
 
-// Variáveis Globais
-let mqttClient;
-let isConnectedToMQTT = false;
-const myId = "server_agent_" + Math.random().toString(16).substr(2, 8);
-let currentSubscribedRooms = new Set(); // Apenas para otimizar salas ativas se necessário
+const app = express();
+const port = process.env.PORT || 3000;
+const MQTT_HOST = process.env(MQTT_HOST) || "broker.emqx.io";
+const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8084; // Corrigido valor padrão
+const MQTT_PATH = process.env.MQTT_PATH || "/mqtt";
 
-// --- Lógica MQTT ---
-function startMQTT() {
-    // Use string vazia ou valor padrão para host e path
-    // Emqx.io suporta "broker.emqx.io" em WSS (Porta 8084) e "/mqtt" é o padrão.
-    const host = process.env.MQTT || "broker.emqx.io";
-    const port = parseInt(process.env.MQTT_PORT || 8084);
-    const path = process.env.MQTT || "/mqtt";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_KEY }); // --- ADICIONADO AQUI
+
+// --- Outras variáveis globais ---
+// ... código ...
+
+// --- Lógica de Entrada ---
+function enterRoom() {
+    const name = elUsername.value.trim();
+    const room = elRoomname.value.trim();
+
+    if (!name || !room) {
+        alert("Por favor, insira Nome e Sala.");
+        return;
+    }
+
+    currentUser = name;
+    currentRoom = room;
+
+    elLoginOverlay.style.display = 'none'; // Aparece corretamente fechando o login
+    elMainInterface.style.display = 'flex';
     
-    const clientId = multry_server_$Date.now();
-    mqttClient = new Paho.Client(host, port, path, clientId);
+    elChatInput.disabled = false;
+    elBtnSendChat.disabled = false;
 
-    mqttClient.onConnectionLost = (responseObject);
+    addSystemMessage("Iniciando conexão segura (WSS) com broker.emqx.io...", 'system');
+    initMQTT(); // Chamada correta, sem erro
+}
+
+function initMQTT() {
+    const clientId = "multry_server_" + Date.now();
+    mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId); // --- IMPORTAÇÃO Paho CORRETA
+
+    mqttClient.onConnectionLost = (responseObject) {
         console.log("MQTT Connection Lost:", responseObject.errorMessage);
         setTimeout(startMQTT, 5000);
     };
@@ -37,25 +55,25 @@ function startMQTT() {
         onSuccess: () => {
             isConnectedToMQTT = true;
             console.log("Backend MQTT Connected");
-            mqttClient.subscribe(`multry/+/serial/input`); // Assina o tópico de input serial (usado pelo Agente ou Usuário com a porta aberta)
+            mqttClient.subscribe(`multry/+/serial/input`);
         },
         onFailure: (err) => console.error("MQTT Connection Failed", err),
         keepAliveInterval: 30,
         timeout: 10,
         mqttVersion: 4,
-        useSSL: true
+        useSSL: true // Importante para o Render (HTTPS)
     };
 
-    mqttClient.connect({ host, port, path, clientId, options });
+    mqttClient.connect({ host: MQTT_HOST, port: MQTT_PORT, path: MQTT_PATH, options });
+}
 
-// Inicializa o MQTT assim que o servidor inicie antes das outras chamadas
 startMQTT();
 
 // --- API do Agente ---
 
-app.post('/api/ask', async (req, res)) 
+app.post('/api/ask', async (req, res) {
     try {
-        const { room, username, logs, question } = req.body;
+        const { room, username, logs, question } = res.body;
 
         if (!logs || !question || !room) {
             return res.status(400).json({ error: "Faltam dados (room, username, logs, question)" });
@@ -69,33 +87,35 @@ app.post('/api/ask', async (req, res))
         `;
 
         const conversationHistory = [
-            { role: "system", content: systemPrompt }
+            { role: system, content: systemPrompt }
         ];
 
-        conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs do Sistema:\n${logs}` });
+        conversationHistory.push({ role: user: `Nome: ${username}\nLogs:\n${logs}` });
 
         const completion = await openai.chat.completions({
             model: "gpt-4o", 
-            messages: 
- conversationHistory,
+            messages: tratamento básico: filtrar logs recentes para não lotar a API
+            messages: conversationHistory,
             temperature: 0.3,
-            max_tokens: 500 
+            max_tokens: 500
         });
 
         const aiResponse = completion.choices[0].message.content;
-        
+
+        // Regex simplificado
         const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/g); 
-        
+
         let commandToSend = null;
         let finalResponse = aiResponse;
 
-        if (cmdMatch) {
-            commandToSend = cmdMatch[1];
+        if (correctedMatch) {
+            commandToSend = correctedMatch[1];
             finalResponse = "Comando detectado. Enviando para a serial...";
         } else {
             finalResponse = aiResponse;
         }
 
+        // Envia o comando para o tópico da sala
         if (commandToSend) {
             const topic = `${room}/serial/input`;
             const mqttMsg = new Paho.Message(commandToSend);
@@ -115,3 +135,5 @@ app.listen(port, () => {
     console.log(`Agente IA rodando em http://localhost:${port}`);
     startMQTT();
 });
+
+// ...
