@@ -17,7 +17,7 @@
             --terminal-bg: #000000;
             --terminal-text: #00ff00;
             --chat-bg: #2d2d2d;
-            --border-color: // Definição da variável para bordas
+            --border-color: #444;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -207,9 +207,7 @@
             flex-shrink: 0;
         }
         .log-tx { color: #ff6b6b; }
-        .log-rx { color: /* Mantido verde claro para diferenciar TX de RX visual */
         .log-rx { color: #4ecdc4; }
-        .log-tx { color: #ff6b6b; }
 
         /* MODAL COLAR */
         #paste-modal {
@@ -244,7 +242,7 @@
             height: 250px;
             background-color: #000;
             color: var(--terminal-text);
-            border: 1px solid #5555;
+            border: 1px solid #555;;
             font-family: 'Courier New', Courier, monospace;
             padding: 10px;
             resize: vertical;
@@ -402,7 +400,6 @@
             flex-shrink: 0;
         }
         .log-tx { color: #ff6b6b; }
-        .log-rx { color: /* Mantido verde claro para diferenciar TX de RX */
         .log-rx { color: #4ecdc4; }
 
         /* MODAL COLAR */
@@ -468,6 +465,7 @@
                 <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
                 <input type="text" id="roomname" placeholder="Sala (ex: sala1)" value="sala1">
                 <button onclick="enterRoom()">Entrar</button>
+                <button id="btn-connect-serial" onclick="connectSerial()" disabled>Conectar Serial</button>
             </div>
             
             <!-- INSTRUÇÕES -->
@@ -517,8 +515,8 @@
                     <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
                     <button class="btn-special" onclick="sendSpecialChar('\x1b[B')">↓</button>
-                    <button class="button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
-                    <button class="button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
                     
                     <div class="control-group">
                         <button class="btn-special" onclick="sendModifiedKey('c')">Ctrl+</button>
@@ -570,7 +568,6 @@
         // Elementos do DOM
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
-        const elLoginOverlay = document.getElementById('login-overlay');
         const elMainInterface = document.getElementById('main-interface');
         const elBtnConnectSerial = document.getElementById('btn-connect-serial');
         const elChatMessages = document.getElementById('chat-messages');
@@ -598,7 +595,6 @@
             currentUser = name;
             currentRoom = room;
 
-            elLoginOverlay.style.display = 'none';
             elMainInterface.style.display = 'flex';
             
             elChatInput.disabled = false;
@@ -1042,6 +1038,7 @@
             if (isConnectedToMQTT) {
                 const topicBase = `multry/${currentRoom}`;
                 publishMessage(`${topicBase}/serial/input`, char);
+            }
             focusTerminalInput();
         }
 
