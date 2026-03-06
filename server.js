@@ -22,7 +22,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_KEY }); // Removido comen
 
 // --- API do Agente ---
 
-app.post('/api/ask', async (req, res) {
+app.post('/api/ask', async (req, res)) {
     try {
         const { room, username, logs, question } = req.body;
 
