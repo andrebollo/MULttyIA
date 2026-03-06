@@ -16,8 +16,6 @@ const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8084;
 const MQTT_PATH = process.env.MQTT_PATH || "/mqtt";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_KEY }); // Removido comentário estranho acima
-import * as fs from 'fs'; // Removido comentário estranho acima
-import path from 'path'; // Removido comentário estranho acima
 
 // --- Lógica MQTT no Backend ---
 // ...
