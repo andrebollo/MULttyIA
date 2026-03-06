@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
-import Paho from 'paho-mqtt';
+import mqtt from 'mqtt';
 import * as fs from 'fs';
 import path from 'path';
 
@@ -13,37 +13,44 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+app.use(express.static('.'));
+
+console.log("Arquivos disponíveis:", fs.readdirSync('.'));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'index.html'));
+});
+
 const port = process.env.PORT || 3000;
 const MQTT_HOST = process.env.MQTT_HOST || "broker.emqx.io";
-const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8084; 
+const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8083; 
 const MQTT_PATH = process.env.MQTT_PATH || "/mqtt";
 
 let mqttClient = null;
 
 function startMQTT() {
-    const clientId = "multry_backend_" + Math.random().toString(16).substr(2, 8);
-    mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
-    
-    mqttClient.onConnectionLost = (responseObject) => {
-        console.log("MQTT Connection Lost:", responseObject.errorMessage);
-    };
-
-    mqttClient.onMessageArrived = (message) => {
-        console.log("MQTT Message:", message.destinationName, message.payloadString);
-    };
-
-    mqttClient.connect({
-        onSuccess: () => {
+    try {
+        const useSSL = MQTT_PORT === 8084;
+        const protocol = useSSL ? 'wss' : 'ws';
+        const url = `${protocol}://${MQTT_HOST}:${MQTT_PORT}${MQTT_PATH}`;
+        console.log("Conectando MQTT:", url);
+        
+        mqttClient = mqtt.connect(url, {
+            clientId: "multry_backend_" + Math.random().toString(16).substr(2, 8),
+            keepalive: 30,
+            clean: true
+        });
+        
+        mqttClient.on('connect', () => {
             console.log("Backend MQTT Connected");
-        },
-        onFailure: (e) => {
-            console.error("Backend MQTT Failed:", e);
-        },
-        useSSL: true,
-        keepAliveInterval: 30,
-        timeout: 10,
-        mqttVersion: 4
-    });
+        });
+
+        mqttClient.on('error', (err) => {
+            console.error("Backend MQTT Error:", err.message);
+        });
+    } catch (err) {
+        console.error("Erro ao conectar MQTT:", err.message);
+    }
 }
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -94,12 +101,9 @@ app.post('/api/ask', async (req, res) => {
             commandToSend = cmdMatch[1].trim();
             finalResponse = "Comando detectado. Enviando para a serial...";
             
-            if (mqttClient && mqttClient.isConnected()) {
+            if (mqttClient && mqttClient.connected) {
                 const topic = `${room}/serial/input`;
-                const mqttMsg = new Paho.Message(commandToSend);
-                mqttMsg.destinationName = topic;
-                mqttMsg.qos = 1;
-                mqttClient.send(mqttMsg);
+                mqttClient.publish(topic, commandToSend);
             }
         } else {
             finalResponse = aiResponse;
@@ -115,5 +119,6 @@ app.post('/api/ask', async (req, res) => {
 
 app.listen(port, () => {
     console.log(`Agente IA rodando em http://localhost:${port}`);
+    console.log(`MQTT Host: ${MQTT_HOST}:${MQTT_PORT}`);
     startMQTT();
 });
