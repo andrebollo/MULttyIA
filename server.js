@@ -10,19 +10,50 @@ import path from 'path';
 dotenv.config();
 
 const app = express();
+app.use(express.json());
+app.use(cors());
+
 const port = process.env.PORT || 3000;
 const MQTT_HOST = process.env.MQTT_HOST || "broker.emqx.io";
 const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8084; 
 const MQTT_PATH = process.env.MQTT_PATH || "/mqtt";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_KEY }); // Removido comentário estranho acima
+let mqttClient = null;
+
+function startMQTT() {
+    const clientId = "multry_backend_" + Math.random().toString(16).substr(2, 8);
+    mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
+    
+    mqttClient.onConnectionLost = (responseObject) => {
+        console.log("MQTT Connection Lost:", responseObject.errorMessage);
+    };
+
+    mqttClient.onMessageArrived = (message) => {
+        console.log("MQTT Message:", message.destinationName, message.payloadString);
+    };
+
+    mqttClient.connect({
+        onSuccess: () => {
+            console.log("Backend MQTT Connected");
+        },
+        onFailure: (e) => {
+            console.error("Backend MQTT Failed:", e);
+        },
+        useSSL: true,
+        keepAliveInterval: 30,
+        timeout: 10,
+        mqttVersion: 4
+    });
+}
+
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 // --- Lógica MQTT no Backend ---
 // ...
 
 // --- API do Agente ---
 
-app.post('/api/ask', async (req, res)) 
+app.post('/api/ask', async (req, res) => {
     try {
         const { room, username, logs, question } = req.body;
 
@@ -41,37 +72,37 @@ app.post('/api/ask', async (req, res))
             { role: "system", content: systemPrompt }
         ];
 
-        conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs:\n${logs}` });
+        conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs:\n${logs}\n\nPergunta: ${question}` });
 
-        const completion = await openai.chat.completions({
-            model: 
- "gpt-4o", 
-            messages: tratamento básico: filtrar logs recentes para não lotar a API.
+        if (!openai) {
+            return res.status(500).json({ error: "OpenAI não configurada. Defina OPENAI_KEY no .env" });
+        }
+
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: conversationHistory,
         });
 
         const aiResponse = completion.choices[0].message.content;
 
-        // Regex simplificado
-        const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/g); 
+        const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
         
         let commandToSend = null;
         let finalResponse = aiResponse;
 
-        if (description) return res.status(400).json({ error: "Faltam dados (room, username, logs, question)" });
-
         if (cmdMatch) {
-            commandToSend = cmdMatch[1];
+            commandToSend = cmdMatch[1].trim();
             finalResponse = "Comando detectado. Enviando para a serial...";
+            
+            if (mqttClient && mqttClient.isConnected()) {
+                const topic = `${room}/serial/input`;
+                const mqttMsg = new Paho.Message(commandToSend);
+                mqttMsg.destinationName = topic;
+                mqttMsg.qos = 1;
+                mqttClient.send(mqttMsg);
+            }
         } else {
             finalResponse = aiResponse;
-        }
-
-        if (commandToSend) {
-            // Envia o comando para o tópico da sala
-            const topic = `${room}/serial/input`;
-            const mqttMsg = new Paho.Message(commandToSend);
-            mqttMsg.qos = 1;
-            mqttClient.send(mqttMsg);
         }
 
         res.json({ response: finalResponse, command: commandToSend });
