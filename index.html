@@ -629,58 +629,60 @@
         }
 
         function focusTerminalInput() {
-            elTerminalInputHidden.focus();
+            if (elTerminalInputHidden) elTerminalInputHidden.focus();
         }
 
         // --- TRATAMENTO DE TECLADO (TX) ---
-        elTerminalInputHidden.addEventListener('input', (e) => {
-            // Bloqueia qualquer evento de deleção automático do browser (Tab/Backspace em campo invisível)
-            if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
-                // Não faz nada, pois já tratado no keydown
-                e.target.value = '';
-                return;
-            }
+        if (elTerminalInputHidden) {
+            elTerminalInputHidden.addEventListener('input', (e) => {
+                // Bloqueia qualquer evento de deleção automático do browser (Tab/Backspace em campo invisível)
+                if (e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward") {
+                    // Não faz nada, pois já tratado no keydown
+                    e.target.value = '';
+                    return;
+                }
 
-            // Se for insertText, envia para serial
-            if (e.inputType === "insertText") {
-                const text = e.data || e.target.value;
-                if (text) {
-                    if (isConnectedToMQTT) {
-                        const topicBase = `multry/${currentRoom}`;
-                        publishMessage(`${topicBase}/serial/input`, text);
+                // Se for insertText, envia para serial
+                if (e.inputType === "insertText") {
+                    const text = e.data || e.target.value;
+                    if (text) {
+                        if (isConnectedToMQTT) {
+                            const topicBase = `multry/${currentRoom}`;
+                            publishMessage(`${topicBase}/serial/input`, text);
+                        }
+                        // Limpa campo
+                        e.target.value = '';
                     }
-                    // Limpa campo
+                }
+            });
+
+            // Evento KeyDown (Enter, Backspace, Tab, Setas)
+            elTerminalInputHidden.addEventListener('keydown', (e) => {
+                const topicBase = `multry/${currentRoom}`;
+
+                if (e.key === 'Backspace') {
+                    e.preventDefault(); 
+                    // Visual
+                    executeBackspaceOnDOM();
+                    // Envia Backspace
+                    if (isConnectedToMQTT) {
+                        publishMessage(`${topicBase}/serial/input`, '\x08'); 
+                    }
+                    e.target.value = ''; 
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (isConnectedToMQTT) {
+                        publishMessage(`${topicBase}/serial/input`, '\t');
+                    }
+                    e.target.value = '';
+                } else if (e.key === 'Enter') {
+                    if (isConnectedToMQTT) {
+                        publishMessage(`${topicBase}/serial/input`, '\r');
+                    }
                     e.target.value = '';
                 }
-            }
-        });
-
-        // Evento KeyDown (Enter, Backspace, Tab, Setas)
-        elTerminalInputHidden.addEventListener('keydown', (e) => {
-            const topicBase = `multry/${currentRoom}`;
-
-            if (e.key === 'Backspace') {
-                e.preventDefault(); 
-                // Visual
-                executeBackspaceOnDOM();
-                // Envia Backspace
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\x08'); 
-                }
-                e.target.value = ''; 
-            } else if (e.key === 'Tab') {
-                e.preventDefault();
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\t');
-                }
-                e.target.value = '';
-            } else if (e.key === 'Enter') {
-                if (isConnectedToMQTT) {
-                    publishMessage(`${topicBase}/serial/input`, '\r');
-                }
-                e.target.value = '';
-            }
-        });
+            });
+        }
 
         // Setas e Outras Teclas
         function sendSpecialChar(char) {
