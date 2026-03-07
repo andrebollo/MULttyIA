@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado com IA</title>
     
-    <!-- Biblioteca Paho MQTT -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <!-- Biblioteca MQTT.js para melhor compatibilidade -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
     
     <script>
         console.log("Paho disponível:", typeof Paho);
@@ -81,79 +81,79 @@
             initMQTT();
         }
 
-        // Variável para armazenar a biblioteca MQTT (será detectada em initMQTT)
-        let MQTT_LIB = null;
-
         function initMQTT() {
-            console.log("initMQTT chamado", MQTT_HOST, MQTT_PORT);
-            console.log("Paho definido?", typeof Paho);
+            console.log("initMQTT chamado");
+            console.log("mqtt disponível?", typeof mqtt);
             
-            // Detectar biblioteca MQTT
-            let MQTT_LIB = null;
-            
-            if (typeof Paho !== 'undefined') {
-                console.log("Paho existe, verificando estrutura...");
-                console.log("Paho.Client?", typeof Paho.Client);
-                console.log("Paho.MQTT?", typeof Paho.MQTT);
-                
-                if (typeof Paho.Client === 'function') {
-                    MQTT_LIB = Paho;
-                } else if (typeof Paho.MQTT === 'object') {
-                    MQTT_LIB = Paho.MQTT;
-                }
-            }
-            
-            if (!MQTT_LIB) {
-                const erroMsg = "Erro: Biblioteca MQTT não carregou. Tente usar Chrome ou Firefox. Detalhes: Paho=" + typeof Paho;
+            // Verificar se mqtt.js carregou
+            if (typeof mqtt === 'undefined') {
+                const erroMsg = "Erro: Biblioteca MQTT não carregou. Tente usar Chrome ou Firefox.";
                 console.error(erroMsg);
-                addSystemMessage(erroMsg, 'error');
                 alert(erroMsg);
                 return;
             }
             
-            console.log("Paho MQTT carregado com sucesso!");
-            
-            const clientId = "multry_" + Math.random().toString(16).substr(2, 8) + "_" + Date.now();
-            console.log("Criando cliente MQTT com ID:", clientId);
-            
-            // Criar cliente - tenta diferentes formas de inicialização
             try {
-                if (typeof MQTT_LIB.Client === 'function') {
-                    mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_PATH, clientId);
-                    console.log("Cliente criado com 4 argumentos");
-                } else {
-                    mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), clientId);
-                    console.log("Cliente criado com 3 argumentos");
-                }
+                // Conectar usando MQTT.js
+                const clientId = "multry_" + Math.random().toString(16).substr(2, 8);
+                const brokerUrl = `wss://${MQTT_HOST}:${MQTT_PORT}${MQTT_PATH}`;
+                console.log("Conectando a:", brokerUrl);
+                
+                mqttClient = mqtt.connect(brokerUrl, {
+                    clientId: clientId,
+                    keepalive: 30,
+                    clean: true
+                });
+                
+                mqttClient.on('connect', () => {
+                    console.log("MQTT Conectado!");
+                    isConnectedToMQTT = true;
+                    onConnect();
+                });
+                
+                mqttClient.on('error', (err) => {
+                    console.error("MQTT Erro:", err);
+                    addSystemMessage("Erro MQTT: " + err.message, 'error');
+                });
+                
+                mqttClient.on('message', (topic, message) => {
+                    const msg = {
+                        destinationName: topic,
+                        payloadString: message.toString()
+                    };
+                    onMessageArrived(msg);
+                });
+                
+                mqttClient.on('offline', () => {
+                    console.log("MQTT Offline");
+                    isConnectedToMQTT = false;
+                });
+                
             } catch (e) {
-                console.error("Erro ao criar cliente MQTT:", e);
-                addSystemMessage("Erro ao conectar MQTT: " + e.message, 'error');
+                console.error("Erro ao conectar MQTT:", e);
+                alert("Erro ao conectar: " + e.message);
+            }
+        }
+        
+        // Função para publicar mensagem no MQTT.js
+        function publishMessage(topic, payload) {
+            if (!mqttClient || !mqttClient.connected) {
+                console.log("MQTT não conectado, ignorando mensagem");
                 return;
             }
-
-            mqttClient.onConnectionLost = onConnectionLost;
-            mqttClient.onMessageArrived = onMessageArrived;
-            console.log("Callbacks registrados");
-
-            const connectOptions = {
-                onSuccess: onConnect,
-                onFailure: onFailure,
-                useSSL: true, // Porta 8084 é WSS (seguro)
-                keepAliveInterval: 30,
-                timeout: 10,
-                mqttVersion: 4
-            };
-
-            console.log("Conectando ao MQTT:", MQTT_HOST, MQTT_PORT);
-            mqttClient.connect(connectOptions);
+            try {
+                mqttClient.publish(topic, payload);
+            } catch (e) {
+                console.error("Erro ao publicar:", e);
+            }
         }
 
-        function onFailure(responseObject) {
-            console.error("Connection failed: ", responseObject);
-            addSystemMessage(`Falha na conexão: ${responseObject.errorMessage || "Erro desconhecido"}`, 'error');
-            elBtnConnectSerial.disabled = false; 
+        function onFailure(err) {
+            console.error("Connection failed: ", err);
+            addSystemMessage(`Falha na conexão: ${err.message || "Erro desconhecido"}`, 'error');
+            if (elBtnConnectSerial) elBtnConnectSerial.disabled = false; 
             setTimeout(() => {
-                if (document.getElementById('main-interface').style.display !== 'none') {
+                if (document.getElementById('main-interface') && document.getElementById('main-interface').style.display !== 'none') {
                     addSystemMessage("Tentando reconectar...", 'system');
                     initMQTT();
                 }
@@ -200,36 +200,17 @@
             focusTerminalInput();
         }
 
-        function onConnectionLost(responseObject) {
+        function onConnectionLost(err) {
             isConnectedToMQTT = false;
-            if (responseObject.errorCode !== 0) {
-                addSystemMessage("Desconectado: " + (responseObject.errorMessage || "Erro genérico"), 'error');
-            } else {
-                addSystemMessage("Desconectado do servidor.", 'system');
-            }
+            console.log("Conexão perdida:", err);
+            addSystemMessage("Desconectado do servidor.", 'system');
             
             setTimeout(() => {
-                if (document.getElementById('main-interface').style.display !== 'none') {
+                if (document.getElementById('main-interface') && document.getElementById('main-interface').style.display !== 'none') {
                     addSystemMessage("Tentando reconectar...", 'system');
                     initMQTT();
                 }
             }, 5000);
-        }
-
-        function publishMessage(topic, payload) {
-            if (!isConnectedToMQTT) return;
-            try {
-                if (!MQTT_LIB) {
-                    console.error("MQTT_LIB não inicializado");
-                    return;
-                }
-                const message = new MQTT_LIB.Message(payload);
-                message.destinationName = topic;
-                message.qos = 1; 
-                mqttClient.send(message);
-            } catch (e) {
-                console.error("Erro ao enviar msg", e);
-            }
         }
 
         function onMessageArrived(message) {
