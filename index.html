@@ -511,9 +511,6 @@
                     <input type="text" id="chat-msg-input" placeholder="Digite uma mensagem..." disabled>
                     <button id="btn-send-chat" onclick="sendChat()" disabled>Enviar</button>
                 </div>
-                <div style="padding:5px 10px;border-top:1px solid #444;">
-                    <button id="btn-ask-ai" onclick="askAI()" disabled style="width:100%;background:#6a0dad;">🤖 Perguntar à IA</button>
-                </div>
             </div>
             <div class="panel" id="users-panel">
                 <div class="panel-header">Usuários na Sala</div>
@@ -593,7 +590,6 @@
         const elChatMessages = document.getElementById('chat-messages');
         const elChatInput = document.getElementById('chat-msg-input');
         const elBtnSendChat = document.getElementById('btn-send-chat');
-        const elBtnAskAI = document.getElementById('btn-ask-ai');
         const elTerminalOutput = document.getElementById('terminal-output');
         const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
         const elUsersList = document.getElementById('users-list');
@@ -624,7 +620,6 @@
             
             elChatInput.disabled = false;
             elBtnSendChat.disabled = false;
-            elBtnAskAI.disabled = false;
 
             initMQTT();
         }
@@ -849,41 +844,6 @@
             }
 
             elChatInput.disabled = false;
-        }
-
-        async function askAI() {
-            const question = prompt("O que você quer perguntar à IA sobre os logs do terminal?");
-            if (!question) return;
-
-            addSystemMessage("🤖 IA analisando logs...", 'system');
-            elBtnAskAI.disabled = true;
-
-            try {
-                const terminalLogs = document.getElementById('terminal-output').textContent;
-                
-                const response = await fetch('/api/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        room: currentRoom,
-                        username: currentUser,
-                        logs: terminalLogs.slice(-4000),
-                        question: question
-                    })
-                });
-
-                const data = await response.json();
-                
-                if (data.error) {
-                    addSystemMessage("Erro: " + data.error, 'error');
-                } else {
-                    addChatMessage("🤖 IA", data.response);
-                }
-            } catch (err) {
-                addSystemMessage("Erro ao conectar com IA: " + err.message, 'error');
-            }
-
-            elBtnAskAI.disabled = false;
         }
 
         elChatInput.addEventListener('keypress', function (e) {
