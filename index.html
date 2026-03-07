@@ -553,6 +553,7 @@
 
     <script>
         console.log("Iniciando script...");
+        console.log("Navegador:", navigator.userAgent);
         
         // --- CONFIGURAÇÃO DE SEGURO PARA MQTT ---
         const MQTT_HOST = "broker.emqx.io";
@@ -647,16 +648,26 @@
             console.log("Paho MQTT carregado:", Object.keys(MQTT_LIB));
             
             const clientId = "multry_" + Math.random().toString(16).substr(2, 8) + "_" + Date.now();
+            console.log("Criando cliente MQTT com ID:", clientId);
             
-            // Criar cliente
-            if (typeof MQTT_LIB.Client === 'function') {
-                mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_PATH, clientId);
-            } else {
-                mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), clientId);
+            // Criar cliente - tenta diferentes formas de inicialização
+            try {
+                if (typeof MQTT_LIB.Client === 'function') {
+                    mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_PATH, clientId);
+                    console.log("Cliente criado com 4 argumentos");
+                } else {
+                    mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), clientId);
+                    console.log("Cliente criado com 3 argumentos");
+                }
+            } catch (e) {
+                console.error("Erro ao criar cliente MQTT:", e);
+                addSystemMessage("Erro ao conectar MQTT: " + e.message, 'error');
+                return;
             }
 
             mqttClient.onConnectionLost = onConnectionLost;
             mqttClient.onMessageArrived = onMessageArrived;
+            console.log("Callbacks registrados");
 
             const connectOptions = {
                 onSuccess: onConnect,
