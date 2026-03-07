@@ -63,9 +63,19 @@ Pergunta do usuário: ${question}`;
             return res.status(500).json({ error: "AndreIA não configurada. Defina GEMINI_API_KEY no .env" });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
-        const result = await model.generateContent(prompt);
+        const generationConfig = {
+            maxOutputTokens: 2048,
+            temperature: 0.9,
+            topP: 0.95,
+            topK: 40,
+        };
+        
+        const result = await model.generateContent({
+            prompt: prompt,
+            generationConfig,
+        });
         const aiResponse = result.response.text();
 
         const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
