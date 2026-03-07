@@ -1,7 +1,7 @@
 // --- Imports ---
 import express from 'express';
 import cors from 'cors';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import * as fs from 'fs';
 import path from 'path';
@@ -25,12 +25,10 @@ app.get('/', (req, res) => {
 
 const port = process.env.PORT || 3000;
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+// Google Gemini - use GEMINI_API_KEY
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
-console.log("OpenAI configurada:", !!openai);
-
-// --- Lógica MQTT no Backend ---
-// ...
+console.log("Gemini configurado:", !!genAI);
 
 // --- API do Agente ---
 
@@ -45,28 +43,30 @@ app.post('/api/ask', async (req, res) => {
         }
 
         const systemPrompt = `
-            Você é um Engenheiro de Rede experiente.
-            Analise os logs abaixo de um equipamento conectado serialmente.
-            Se o usuário pedir para investigar um problema (ex: "O IP não pinga"), responda com análise técnica detalhada.
-            Se você identificar o problema e houver um comando de correção, envie o comando no formato: [CMD]comando[CMD].
-        `;
+Você é um Engenheiro de Rede experiente chamado AndreIA.
+Analise os logs abaixo de um equipamento conectado serialmente.
+Se o usuário pedir para investigar um problema (ex: "O IP não pinga"), responda com análise técnica detalhada.
+Se você identificar o problema e houver um comando de correção, envie o comando no formato: [CMD]comando[CMD].
+Responda sempre em português brasileiro, de forma clara e útil.
+`;
 
-        const conversationHistory = [
-            { role: "system", content: systemPrompt }
-        ];
+        const prompt = `${systemPrompt}
 
-        conversationHistory.push({ role: "user", content: `Nome: ${username}\nLogs:\n${logs}\n\nPergunta: ${question}` });
+Nome do usuário: ${username}
 
-        if (!openai) {
-            return res.status(500).json({ error: "OpenAI não configurada. Defina OPENAI_KEY no .env" });
+Logs do terminal:
+${logs}
+
+Pergunta do usuário: ${question}`;
+
+        if (!genAI) {
+            return res.status(500).json({ error: "AndreIA não configurada. Defina GEMINI_API_KEY no .env" });
         }
 
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: conversationHistory,
-        });
-
-        const aiResponse = completion.choices[0].message.content;
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        const result = await model.generateContent(prompt);
+        const aiResponse = result.response.text();
 
         const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
         
@@ -76,14 +76,12 @@ app.post('/api/ask', async (req, res) => {
         if (cmdMatch) {
             commandToSend = cmdMatch[1].trim();
             finalResponse = "Comando detectado. O comando será enviado via MQTT pelo frontend.";
-        } else {
-            finalResponse = aiResponse;
         }
 
         res.json({ response: finalResponse, command: commandToSend });
 
     } catch (error) {
-        console.error("Erro na OpenAI:", error);
+        console.error("Erro na Gemini:", error);
         res.status(500).json({ error: error.message });
     }
 });
