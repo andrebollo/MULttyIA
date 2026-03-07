@@ -556,7 +556,7 @@
         
         // --- CONFIGURAÇÃO DE SEGURO PARA MQTT ---
         const MQTT_HOST = "broker.emqx.io";
-        const MQTT_PORT = 8083; // WS
+        const MQTT_PORT = 8084; // WSS (Secure)
         const MQTT_PATH = "/mqtt";
         
         // --- VARIAVEIS GLOBAIS ---
@@ -661,7 +661,7 @@
             const connectOptions = {
                 onSuccess: onConnect,
                 onFailure: onFailure,
-                useSSL: false, // Porta 8083 é WS (não seguro)
+                useSSL: true, // Porta 8084 é WSS (seguro)
                 keepAliveInterval: 30,
                 timeout: 10,
                 mqttVersion: 4
