@@ -624,19 +624,36 @@
             initMQTT();
         }
 
+        // Variável para armazenar a biblioteca MQTT detectada
+        let MQTT_LIB = null;
+
         function initMQTT() {
             console.log("initMQTT chamado", MQTT_HOST, MQTT_PORT);
-            // O ID do cliente MQTT precisa ser único e ter sido criado dinamicamente.
-            const clientId = "multry_" + Math.random().toString(16).substr(2, 8) + "_" + Date.now();
-
-            if (typeof Paho === 'undefined') {
+            
+            // Detectar biblioteca MQTT
+            if (typeof Paho !== 'undefined') {
+                if (typeof Paho.Client === 'function') {
+                    MQTT_LIB = Paho;
+                } else if (typeof Paho.MQTT === 'object') {
+                    MQTT_LIB = Paho.MQTT;
+                }
+            }
+            
+            if (!MQTT_LIB) {
                 console.error("Paho MQTT não carregado!");
                 addSystemMessage("Erro: Biblioteca MQTT não carregou. Recarregue a página.", 'error');
                 return;
             }
-            console.log("Paho MQTT carregado:", typeof Paho);
+            console.log("Paho MQTT carregado:", Object.keys(MQTT_LIB));
             
-            mqttClient = new Paho.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_PATH, clientId);
+            const clientId = "multry_" + Math.random().toString(16).substr(2, 8) + "_" + Date.now();
+            
+            // Criar cliente
+            if (typeof MQTT_LIB.Client === 'function') {
+                mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_PATH, clientId);
+            } else {
+                mqttClient = new MQTT_LIB.Client(MQTT_HOST, Number(MQTT_PORT), clientId);
+            }
 
             mqttClient.onConnectionLost = onConnectionLost;
             mqttClient.onMessageArrived = onMessageArrived;
@@ -712,7 +729,11 @@
         function publishMessage(topic, payload) {
             if (!isConnectedToMQTT) return;
             try {
-                const message = new Paho.Message(payload);
+                if (!MQTT_LIB) {
+                    console.error("MQTT_LIB não inicializado");
+                    return;
+                }
+                const message = new MQTT_LIB.Message(payload);
                 message.destinationName = topic;
                 message.qos = 1; 
                 mqttClient.send(message);
