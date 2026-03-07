@@ -834,28 +834,41 @@
         }
 
         async function handleAIQuery(data) {
+            console.log("handleAIQuery recebido:", data);
             const { sender, question, logs } = data;
             
-            // Só responde se não for a própria pergunta (evita loop)
-            if (sender === currentUser) return;
+            // Adicionar um delay aleatório para evitar múltiplas respostas
+            // Apenas um cliente (o primeiro que responder) enviará a resposta
+            const delay = Math.random() * 500;
+            
+            await new Promise(r => setTimeout(r, delay));
             
             try {
+                const logsText = logs || "Sem logs disponíveis";
+                
                 const response = await fetch('/api/ask', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         room: currentRoom,
                         username: sender,
-                        logs: logs.slice(-4000),
+                        logs: logsText.slice(-4000),
                         question: question
                     })
                 });
 
                 const result = await response.json();
+                console.log("Resposta da API:", result);
                 
                 if (!result.error) {
                     const topicBase = `multry/${currentRoom}`;
                     const payload = JSON.stringify({ sender: "AndreIA", text: result.response });
+                    publishMessage(`${topicBase}/chat`, payload);
+                } else {
+                    console.error("Erro da API:", result.error);
+                    // Envia erro apenas para quem perguntou
+                    const topicBase = `multry/${currentRoom}`;
+                    const payload = JSON.stringify({ sender: "AndreIA", text: "Desculpe, tive um problema: " + result.error });
                     publishMessage(`${topicBase}/chat`, payload);
                 }
             } catch (err) {
