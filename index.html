@@ -706,12 +706,14 @@
                 hasSerial: false
             }));
 
+            // Renderiza lista de usuários (inclui AndreIA)
+            renderUsers();
+
             // AndreIA se apresenta
             setTimeout(() => {
                 const apresentacao = `Olá! Eu sou a AndreIA, sua assistente de rede. 😊\n\nPara me chamar, basta digitar no chat:\n<b>AndreIA</b> + sua pergunta\n\nExemplo: "AndreIA qual é o status do equipamento?"\n\nPosso analisar os logs do terminal e ajudar a diagnosticar problemas.`;
                 const payload = JSON.stringify({ sender: "AndreIA", text: apresentacao });
                 publishMessage(`${topicBase}/chat`, payload);
-                renderUsers();
             }, 1000);
 
             if (!serialLockedBy) {
@@ -925,6 +927,15 @@
                 if (!users[data.id]) {
                     users[data.id] = { name: data.name, hasSerial: data.hasSerial };
                     addSystemMessage(`${data.name} entrou na sala.`);
+                    
+                    // Novo usuário entrou - apresentar a AndreIA
+                    setTimeout(() => {
+                        const topicBase = `multry/${currentRoom}`;
+                        const apresentacao = `Olá ${data.name}! Eu sou a AndreIA, sua assistente de rede. 😊\n\nPara me chamar, basta digitar no chat:\n<b>AndreIA</b> + sua pergunta\n\nExemplo: "AndreIA qual é o status do equipamento?"`;
+                        const payload = JSON.stringify({ sender: "AndreIA", text: apresentacao });
+                        publishMessage(`${topicBase}/chat`, payload);
+                    }, 500);
+                    
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/presence`, JSON.stringify({
                         type: 'announce',
