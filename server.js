@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
-import mqtt from 'mqtt';
 import * as fs from 'fs';
 import path from 'path';
 
@@ -22,38 +21,10 @@ app.get('/', (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-const MQTT_HOST = process.env.MQTT_HOST || "broker.emqx.io";
-const MQTT_PORT = parseInt(process.env.MQTT_PORT) || 8083; 
-const MQTT_PATH = process.env.MQTT_PATH || "/mqtt";
-
-let mqttClient = null;
-
-function startMQTT() {
-    try {
-        const useSSL = MQTT_PORT === 8084;
-        const protocol = useSSL ? 'wss' : 'ws';
-        const url = `${protocol}://${MQTT_HOST}:${MQTT_PORT}${MQTT_PATH}`;
-        console.log("Conectando MQTT:", url);
-        
-        mqttClient = mqtt.connect(url, {
-            clientId: "multry_backend_" + Math.random().toString(16).substr(2, 8),
-            keepalive: 30,
-            clean: true
-        });
-        
-        mqttClient.on('connect', () => {
-            console.log("Backend MQTT Connected");
-        });
-
-        mqttClient.on('error', (err) => {
-            console.error("Backend MQTT Error:", err.message);
-        });
-    } catch (err) {
-        console.error("Erro ao conectar MQTT:", err.message);
-    }
-}
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+console.log("OpenAI configurada:", !!openai);
 
 // --- Lógica MQTT no Backend ---
 // ...
@@ -99,12 +70,7 @@ app.post('/api/ask', async (req, res) => {
 
         if (cmdMatch) {
             commandToSend = cmdMatch[1].trim();
-            finalResponse = "Comando detectado. Enviando para a serial...";
-            
-            if (mqttClient && mqttClient.connected) {
-                const topic = `${room}/serial/input`;
-                mqttClient.publish(topic, commandToSend);
-            }
+            finalResponse = "Comando detectado. O comando será enviado via MQTT pelo frontend.";
         } else {
             finalResponse = aiResponse;
         }
@@ -118,7 +84,5 @@ app.post('/api/ask', async (req, res) => {
 });
 
 app.listen(port, () => {
-    console.log(`Agente IA rodando em http://localhost:${port}`);
-    console.log(`MQTT Host: ${MQTT_HOST}:${MQTT_PORT}`);
-    startMQTT();
+    console.log(`Servidor rodando em http://localhost:${port}`);
 });
