@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado com IA</title>
     
-    <!-- Biblioteca Paho MQTT -->
-    <!-- Certifique que o arquivo mqttws31.min.js está na pasta do projeto local. -->
-    <script src="mqttws31.min.js"></script>
+    <!-- Biblioteca Paho MQTT via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 
     <style>
         :root {
@@ -553,9 +552,11 @@
     </div>
 
     <script>
+        console.log("Iniciando script...");
+        
         // --- CONFIGURAÇÃO DE SEGURO PARA MQTT ---
         const MQTT_HOST = "broker.emqx.io";
-        const MQTT_PORT = 8084; // WSS
+        const MQTT_PORT = 8083; // WS
         const MQTT_PATH = "/mqtt";
         
         // --- VARIAVEIS GLOBAIS ---
@@ -624,10 +625,18 @@
         }
 
         function initMQTT() {
+            console.log("initMQTT chamado", MQTT_HOST, MQTT_PORT);
             // O ID do cliente MQTT precisa ser único e ter sido criado dinamicamente.
             const clientId = "multry_" + Math.random().toString(16).substr(2, 8) + "_" + Date.now();
 
-            mqttClient = new Paho.Client(MQTT_HOST, MQTT_PORT, MQTT_PATH, clientId);
+            if (typeof Paho === 'undefined') {
+                console.error("Paho MQTT não carregado!");
+                addSystemMessage("Erro: Biblioteca MQTT não carregou. Recarregue a página.", 'error');
+                return;
+            }
+            console.log("Paho MQTT carregado:", typeof Paho);
+            
+            mqttClient = new Paho.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_PATH, clientId);
 
             mqttClient.onConnectionLost = onConnectionLost;
             mqttClient.onMessageArrived = onMessageArrived;
@@ -635,13 +644,14 @@
             const connectOptions = {
                 onSuccess: onConnect,
                 onFailure: onFailure,
-                useSSL: true, // WSS (Porta 8084)
+                useSSL: false, // Porta 8083 é WS (não seguro)
                 keepAliveInterval: 30,
                 timeout: 10,
                 mqttVersion: 4
             };
 
-            mqttClient.connect({ host: MQTT_HOST, port: MQTT_PORT, path: MQTT_PATH, connectOptions });
+            console.log("Conectando ao MQTT:", MQTT_HOST, MQTT_PORT);
+            mqttClient.connect(connectOptions);
         }
 
         function onFailure(responseObject) {
