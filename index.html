@@ -511,6 +511,9 @@
                     <input type="text" id="chat-msg-input" placeholder="Digite uma mensagem..." disabled>
                     <button id="btn-send-chat" onclick="sendChat()" disabled>Enviar</button>
                 </div>
+                <div style="padding:5px 10px;border-top:1px solid #444;">
+                    <button id="btn-ask-ai" onclick="askAI()" disabled style="width:100%;background:#6a0dad;">🤖 Perguntar à IA</button>
+                </div>
             </div>
             <div class="panel" id="users-panel">
                 <div class="panel-header">Usuários na Sala</div>
@@ -590,6 +593,7 @@
         const elChatMessages = document.getElementById('chat-messages');
         const elChatInput = document.getElementById('chat-msg-input');
         const elBtnSendChat = document.getElementById('btn-send-chat');
+        const elBtnAskAI = document.getElementById('btn-ask-ai');
         const elTerminalOutput = document.getElementById('terminal-output');
         const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
         const elUsersList = document.getElementById('users-list');
@@ -620,6 +624,7 @@
             
             elChatInput.disabled = false;
             elBtnSendChat.disabled = false;
+            elBtnAskAI.disabled = false;
 
             initMQTT();
         }
@@ -694,7 +699,7 @@
             mqttClient.subscribe(`${topicBase}/serial/data`);
             mqttClient.subscribe(`${topicBase}/serial/input`);
             mqttClient.subscribe(`${topicBase}/serial/lock`);
-            mqttClient.subscribe(`${topicBase}/serial/output`); // O Backend também ouvirá os dados e lidará com a IA.
+            mqttClient.subscribe(`${topicBase}/serial/output`);
 
             publishMessage(`${topicBase}/presence`, JSON.stringify({
                 type: 'join',
@@ -702,6 +707,14 @@
                 name: currentUser,
                 hasSerial: false
             }));
+
+            // AndreIA se apresenta
+            setTimeout(() => {
+                const apresentacao = `Olá! Eu sou a AndreIA, sua assistente de rede. 😊\n\nPara me chamar, basta digitar no chat:\n<b>AndreIA</b> + sua pergunta\n\nExemplo: "AndreIA qual é o status do equipamento?"\n\nPosso analisar os logs do terminal e ajudar a diagnosticar problemas.`;
+                const payload = JSON.stringify({ sender: "AndreIA", text: apresentacao });
+                publishMessage(`${topicBase}/chat`, payload);
+                renderUsers();
+            }, 1000);
 
             if (!serialLockedBy) {
                 elBtnConnectSerial.disabled = false;
@@ -783,7 +796,7 @@
             }
         }
 
-        function sendChat() {
+        async function sendChat() {
             const text = elChatInput.value.trim();
             if (!text) return;
 
@@ -791,6 +804,83 @@
             const payload = JSON.stringify({ sender: currentUser, text: text });
             publishMessage(`${topicBase}/chat`, payload);
             elChatInput.value = '';
+
+            // Verificar se é mensagem para AndreIA
+            if (text.toLowerCase().startsWith('andreia')) {
+                const question = text.replace(/^andreia\s*/i, '').trim();
+                if (question) {
+                    await askAndreIA(question);
+                }
+            }
+        }
+
+        async function askAndreIA(question) {
+            addSystemMessage("🤖 AndreIA digitando...", 'system');
+            elChatInput.disabled = true;
+
+            try {
+                const terminalLogs = document.getElementById('terminal-output').textContent;
+                
+                const response = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        room: currentRoom,
+                        username: currentUser,
+                        logs: terminalLogs.slice(-4000),
+                        question: question
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    addSystemMessage("AndreIA: Desculpe, tive um problema: " + data.error, 'error');
+                } else {
+                    const topicBase = `multry/${currentRoom}`;
+                    const payload = JSON.stringify({ sender: "AndreIA", text: data.response });
+                    publishMessage(`${topicBase}/chat`, payload);
+                }
+            } catch (err) {
+                addSystemMessage("AndreIA: Erro ao conectar - " + err.message, 'error');
+            }
+
+            elChatInput.disabled = false;
+        }
+
+        async function askAI() {
+            const question = prompt("O que você quer perguntar à IA sobre os logs do terminal?");
+            if (!question) return;
+
+            addSystemMessage("🤖 IA analisando logs...", 'system');
+            elBtnAskAI.disabled = true;
+
+            try {
+                const terminalLogs = document.getElementById('terminal-output').textContent;
+                
+                const response = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        room: currentRoom,
+                        username: currentUser,
+                        logs: terminalLogs.slice(-4000),
+                        question: question
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) {
+                    addSystemMessage("Erro: " + data.error, 'error');
+                } else {
+                    addChatMessage("🤖 IA", data.response);
+                }
+            } catch (err) {
+                addSystemMessage("Erro ao conectar com IA: " + err.message, 'error');
+            }
+
+            elBtnAskAI.disabled = false;
         }
 
         elChatInput.addEventListener('keypress', function (e) {
@@ -846,6 +936,16 @@
             `;
             if (isSerialConnected) meDiv.classList.add('has-serial');
             elUsersList.appendChild(meDiv);
+
+            // Adicionar AndreIA como usuário virtual
+            const andreiaDiv = document.createElement('div');
+            andreiaDiv.className = 'user-item';
+            andreiaDiv.style.color = '#9c27b0';
+            andreiaDiv.innerHTML = `
+                🤖 AndreIA
+                <span class="serial-indicator" style="background:#9c27b0;color:#fff;">IA</span>
+            `;
+            elUsersList.appendChild(andreiaDiv);
 
             for (let id in users) {
                 const u = users[id];
