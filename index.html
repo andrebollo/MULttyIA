@@ -458,20 +458,34 @@
 </head>
 <body>
 
-    <!-- CABEÇALHO -->
-    <header>
-        <div class="login-area" id="login-area">
-            <div class="login-fields">
-                <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
-                <input type="text" id="roomname" placeholder="Sala (ex: sala1)" value="sala1">
-                <button onclick="enterRoom()">Entrar</button>
-                <button id="btn-connect-serial" onclick="connectSerial()" disabled>Conectar Serial</button>
+    <!-- TELA DE BOAS-VINDAS / LOGIN -->
+    <div id="welcome-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:var(--bg-color);padding:20px;">
+        <h1 style="color:#ff4444;font-size:2.5rem;margin-bottom:20px;letter-spacing:3px;">MULttyIA</h1>
+        <div style="background:#252526;padding:30px;border-radius:10px;max-width:600px;text-align:center;border:1px solid #444;">
+            <p style="margin-bottom:20px;line-height:1.6;">
+                Esta página é um <strong>terminal serial colaborativo</strong>.<br><br>
+                Coloque um nome, entre em uma sala (se não existir, será criada).<br><br>
+                Ao entrar, o terminal aparecerá junto com um chat.<br><br>
+                <strong>Um dos usuários</strong> conecta seu navegador à porta serial através do botão "Conectar Serial".<br><br>
+                Todos na sala poderão interagir com a interface serial.<br><br>
+                Temos um terminal serial estilo Putty de forma colaborativa, para remotamente configurar equipamentos ou monitorar processos.
+            </p>
+            <div style="display:flex;gap:10px;justify-content:center;margin:20px 0;">
+                <input type="text" id="username" placeholder="Seu Nome" maxlength="15" style="padding:10px;">
+                <input type="text" id="roomname" placeholder="Sala (ex: sala1)" value="sala1" style="padding:10px;">
+                <button onclick="enterRoom()" style="padding:10px 20px;">Entrar</button>
             </div>
-            
-            <!-- INSTRUÇÕES -->
-            <div class="instructions-box">
-                "Essa página é um terminal serial colaborativo. coloque um nome, entre em uma sala (se não existir ela será criada). Ao entrar o terminal vai aparecer, assim como um chat. Um dos usuários conecta seu navegador a serial através do botão Conectar Serial. Todos na sala poderão interagir com a interface serial. Temos então um terminal serial estilo Putty de uma maneira colaborativa, que pode ser usado para remotamente configurar equipamentos ou monitorar processos."
-            </div>
+        </div>
+    </div>
+
+    <!-- INTERFACE PRINCIPAL (oculta inicialmente) -->
+    <header id="main-header" style="display:none;justify-content:space-between;align-items:center;padding:10px 20px;background:#252526;border-bottom:1px solid #444;height:60px;">
+        <div style="display:flex;align-items:center;gap:15px;">
+            <span class="app-title">MULttyIA</span>
+            <span id="user-info" style="color:#888;font-size:0.9rem;"></span>
+        </div>
+        <div>
+            <button id="btn-connect-serial" onclick="connectSerial()" disabled>Conectar Serial</button>
         </div>
     </header>
 
@@ -568,7 +582,9 @@
         // Elementos do DOM
         const elUsername = document.getElementById('username');
         const elRoomname = document.getElementById('roomname');
+        const elWelcomeScreen = document.getElementById('welcome-screen');
         const elMainInterface = document.getElementById('main-interface');
+        const elMainHeader = document.getElementById('main-header');
         const elBtnConnectSerial = document.getElementById('btn-connect-serial');
         const elChatMessages = document.getElementById('chat-messages');
         const elChatInput = document.getElementById('chat-msg-input');
@@ -595,7 +611,11 @@
             currentUser = name;
             currentRoom = room;
 
+            elWelcomeScreen.style.display = 'none';
+            elMainHeader.style.display = 'flex';
             elMainInterface.style.display = 'flex';
+            
+            document.getElementById('user-info').textContent = `${currentUser} | Sala: ${currentRoom}`;
             
             elChatInput.disabled = false;
             elBtnSendChat.disabled = false;
@@ -1115,9 +1135,8 @@
         }
 
         function escapeHtml(text) {
-            return text.replace(/[&<>"']/g, function(m) { 
-                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"\'':'&#039;'}[m]; 
-            });
+            const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+            return text.replace(/[&<>"']/g, m => map[m]);
         }
 
         window.addEventListener('beforeunload', () => {
