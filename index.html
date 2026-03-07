@@ -696,6 +696,9 @@
             mqttClient.subscribe(`${topicBase}/serial/lock`);
             mqttClient.subscribe(`${topicBase}/serial/output`);
 
+            // Setup listener para mensagens de IA
+            setupAIListener();
+
             publishMessage(`${topicBase}/presence`, JSON.stringify({
                 type: 'join',
                 id: myId,
@@ -786,6 +789,10 @@
                     const data = JSON.parse(payload);
                     updateSerialLock(data);
                 }
+                else if (topic === `${topicBase}/ai/query`) {
+                    const data = JSON.parse(payload);
+                    handleAIQuery(data);
+                }
             } catch (e) {
                 console.error("Erro parse JSON", e);
             }
@@ -804,8 +811,53 @@
             if (text.toLowerCase().startsWith('andreia')) {
                 const question = text.replace(/^andreia\s*/i, '').trim();
                 if (question) {
-                    await askAndreIA(question);
+                    // Publicar mensagem especial para todos os clientes chamarem a IA
+                    const aiPayload = JSON.stringify({ 
+                        sender: currentUser, 
+                        question: question,
+                        logs: document.getElementById('terminal-output').textContent || "Sem logs"
+                    });
+                    publishMessage(`${topicBase}/ai/query`, aiPayload);
+                    
+                    // Mostrar que AndreIA está pensando para todos
+                    addSystemMessage(`🤖 ${currentUser} perguntou à AndreIA: "${question}"`, 'system');
                 }
+            }
+        }
+
+        // Listener para mensagens de IA vindas de outros usuários
+        function setupAIListener() {
+            const topicBase = `multry/${currentRoom}`;
+            mqttClient.subscribe(`${topicBase}/ai/query`);
+        }
+
+        async function handleAIQuery(data) {
+            const { sender, question, logs } = data;
+            
+            // Só responde se não for a própria pergunta (evita loop)
+            if (sender === currentUser) return;
+            
+            try {
+                const response = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        room: currentRoom,
+                        username: sender,
+                        logs: logs.slice(-4000),
+                        question: question
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (!result.error) {
+                    const topicBase = `multry/${currentRoom}`;
+                    const payload = JSON.stringify({ sender: "AndreIA", text: result.response });
+                    publishMessage(`${topicBase}/chat`, payload);
+                }
+            } catch (err) {
+                console.error("Erro ao processar query de IA:", err);
             }
         }
 
