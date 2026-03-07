@@ -63,7 +63,7 @@ Pergunta do usuário: ${question}`;
             return res.status(500).json({ error: "AndreIA não configurada. Defina GEMINI_API_KEY no .env" });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
         const result = await model.generateContent(prompt);
         const aiResponse = result.response.text();
