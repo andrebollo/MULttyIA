@@ -4,52 +4,141 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado com IA</title>
-    
-    <!-- Biblioteca MQTT.js -->
+    <style>
+        :root { --bg-color: #1e1e1e; --text-color: #e0e0e0; --accent-color: #00bcd4; --terminal-bg: #000000; --terminal-text: #00ff00; --chat-bg: #2d2d2d; --border-color: #444; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        input { padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #3c3c3c; color: white; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; background: var(--accent-color); color: white; cursor: pointer; font-weight: bold; }
+        button:hover { opacity: 0.8; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        #welcome-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 20px; }
+        #welcome-screen > div { background: #252526; padding: 30px; border-radius: 10px; max-width: 600px; text-align: center; border: 1px solid #444; }
+        #welcome-screen h1 { color: #ff4444; font-size: 2.5rem; margin-bottom: 20px; letter-spacing: 3px; }
+        #welcome-screen p { margin-bottom: 20px; line-height: 1.6; }
+        #welcome-screen .login-box { display: flex; gap: 10px; justify-content: center; margin: 20px 0; }
+        #main-header { display: none; justify-content: space-between; align-items: center; padding: 10px 20px; background: #252526; border-bottom: 1px solid #444; height: 60px; }
+        #main-header .app-title { color: #ff4444; font-size: 1.5rem; font-weight: bold; }
+        #main-interface { display: none; flex: 1; overflow: hidden; }
+        .left-column { width: 33.33%; display: flex; flex-direction: column; border-right: 1px solid #444; }
+        .right-column { width: 66.67%; display: flex; flex-direction: column; }
+        #chat-panel { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); }
+        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; }
+        .msg { padding: 5px; word-wrap: break-word; }
+        .msg .sender { font-weight: bold; color: var(--accent-color); }
+        .msg.system { color: #ffd700; font-style: italic; }
+        .msg.error { color: #ff4444; }
+        #chat-input-area { display: flex; padding: 10px; background: #252526; border-top: 1px solid #444; gap: 10px; }
+        #chat-input-area input { flex: 1; }
+        #users-panel { height: 150px; background: #252526; overflow-y: auto; border-top: 1px solid #444; }
+        .user-item { padding: 5px 10px; border-bottom: 1px solid #333; }
+        .user-item.me { color: var(--accent-color); font-weight: bold; }
+        #terminal-panel { flex: 1; background: var(--terminal-bg); color: var(--terminal-text); font-family: monospace; padding: 10px; display: flex; flex-direction: column; }
+        #terminal-output { flex: 1; overflow-y: auto; white-space: pre-wrap; }
+        .terminal-controls { display: flex; gap: 5px; padding: 5px 0; border-top: 1px solid #333; flex-wrap: wrap; }
+        .btn-special { font-size: 0.8rem; background: #444; padding: 4px 8px; }
+        #serial-data-panel { height: 120px; background: #1a1a1a; border-top: 1px solid #444; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 0.8rem; color: #aaa; }
+        .log-tx { color: #ff6b6b; }
+        .log-rx { color: #4ecdc4; }
+        #paste-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: #252526; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; }
+        #paste-text-area { width: 100%; height: 250px; background: #000; color: var(--terminal-text); border: 1px solid #555; font-family: monospace; padding: 10px; resize: vertical; }
+        .modal-actions { margin-top: 15px; text-align: right; }
+        #terminal-input-hidden { position: absolute; opacity: 0; top: -1000px; }
+    </style>
+</head>
+<body>
+    <div id="welcome-screen">
+        <div>
+            <h1>MULttyIA</h1>
+            <p>Esta página é um terminal serial colaborativo.<br>Coloque um nome, entre em uma sala (se não existir, será criada).<br>Um dos usuários conecta seu navegador à porta serial.<br>Todos na sala podem interagir com o terminal.</p>
+            <div class="login-box">
+                <input type="text" id="username" placeholder="Seu Nome" maxlength="15">
+                <input type="text" id="roomname" placeholder="Sala" value="sala1">
+                <button onclick="enterRoom()">Entrar</button>
+            </div>
+        </div>
+    </div>
+    <header id="main-header">
+        <div style="display:flex;align-items:center;gap:15px;">
+            <span class="app-title">MULttyIA</span>
+            <span id="user-info" style="color:#888;font-size:0.9rem;"></span>
+        </div>
+        <button id="btn-connect-serial" onclick="connectSerial()" disabled>Conectar Serial</button>
+    </header>
+    <div id="main-interface">
+        <div class="left-column">
+            <div id="chat-panel">
+                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #444;">Chat</div>
+                <div id="chat-messages"></div>
+                <div id="chat-input-area">
+                    <input type="text" id="chat-msg-input" placeholder="Digite uma mensagem..." disabled>
+                    <button id="btn-send-chat" onclick="sendChat()" disabled>Enviar</button>
+                </div>
+            </div>
+            <div id="users-panel">
+                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #444;">Usuários</div>
+                <div id="users-list"></div>
+            </div>
+        </div>
+        <div class="right-column">
+            <div id="terminal-panel" onclick="focusTerminalInput()">
+                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #333;">Terminal</div>
+                <div id="terminal-output"></div>
+                <div class="terminal-controls">
+                    <button class="btn-special" onclick="pasteToSerial()">Colar</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[B')">↓</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
+                </div>
+            </div>
+            <input type="text" id="terminal-input-hidden" autocomplete="off">
+            <div id="serial-data-panel">
+                <div style="padding:5px;font-weight:bold;border-bottom:1px solid #333;">Serial Data</div>
+                <div id="serial-log"></div>
+            </div>
+        </div>
+    </div>
+    <div id="paste-modal" onclick="if(event.target.id === 'paste-modal') closePasteModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3>Colar Script / Texto</h3>
+            <textarea id="paste-text-area" placeholder="Cole o script ou texto longo aqui..."></textarea>
+            <div class="modal-actions">
+                <button onclick="closePasteModal()">Cancelar</button>
+                <button onclick="sendPasteText()">Enviar para Serial</button>
+            </div>
+        </div>
+    </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
-    
     <script>
         console.log("Biblioteca MQTT carregada:", typeof mqtt);
         
-        // Função principal - definida primeiro
         function initApp() {
             console.log("initApp iniciado...");
             
-            // Verificar biblioteca MQTT
             if (typeof mqtt === 'undefined') {
                 console.error("MQTT não carregou!");
-                document.body.innerHTML = '<h1>Erro: Biblioteca MQTT não carregou. Verifique sua conexão.</h1>';
                 return;
             }
             
-            // --- CONFIGURAÇÃO MQTT ---
             const MQTT_HOST = "broker.emqx.io";
             const MQTT_PORT = 8084;
             const MQTT_PATH = "/mqtt";
             
             let mqttClient = null;
             let isConnectedToMQTT = false;
-            
             let currentUser = "";
             let currentRoom = "";
             let myId = "user_" + Math.random().toString(16).substr(2, 8);
-            
-            // Serial & AI State
-            let serialPort = null;
-            let serialWriter = null;
-            let serialReader = null;
-            let isSerialConnected = false;
-            let serialLockedBy = null;
-
-            // Buffer e Timers
-            let serialOutBuffer = ""; 
-            let flushTimer = null;
+            let serialPort = null, serialWriter = null, serialReader = null;
+            let isSerialConnected = false, serialLockedBy = null;
+            let serialOutBuffer = ""; let flushTimer = null;
             const MAX_PACKET_SIZE = 4096;
             const FLUSH_INTERVAL = 200;
-            
             let users = {};
             
-            // Elementos do DOM
             const elUsername = document.getElementById('username');
             const elRoomname = document.getElementById('roomname');
             const elWelcomeScreen = document.getElementById('welcome-screen');
@@ -792,9 +881,8 @@
         });
         
         console.log("Aplicação iniciada com sucesso!");
-        } // Fim de initApp
+        }
         
-        // Iniciar quando o DOM estiver pronto
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initApp);
         } else {
