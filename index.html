@@ -20,10 +20,10 @@
         #main-header { display: none; justify-content: space-between; align-items: center; padding: 10px 20px; background: #252526; border-bottom: 1px solid #444; height: 60px; }
         #main-header .app-title { color: #ff4444; font-size: 1.5rem; font-weight: bold; }
         #main-interface { display: none; flex: 1; overflow: hidden; }
-        .left-column { width: 33.33%; display: flex; flex-direction: column; border-right: 1px solid #444; }
-        .right-column { width: 66.67%; display: flex; flex-direction: column; }
-        #chat-panel { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); }
-        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; }
+        .left-column { width: 33.33%; display: flex; flex-direction: column; border-right: 1px solid #444; overflow: hidden; }
+        .right-column { width: 66.67%; display: flex; flex-direction: column; overflow: hidden; }
+        #chat-panel { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); overflow: hidden; }
+        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; overflow-x: hidden; }
         .msg { padding: 5px; word-wrap: break-word; }
         .msg .sender { font-weight: bold; color: var(--accent-color); }
         .msg.system { color: #ffd700; font-style: italic; }
@@ -287,11 +287,10 @@
             // Renderiza lista de usuários (inclui AndreIA)
             renderUsers();
 
-            // AndreIA se apresenta
+            // AndreIA se apresenta apenas localmente
             setTimeout(() => {
-                const apresentacao = `Olá! Eu sou a AndreIA, sua assistente de rede. 😊\n\nPara me chamar, basta digitar no chat:\n<b>AndreIA</b> + sua pergunta\n\nExemplo: "AndreIA qual é o status do equipamento?"\n\nPosso analisar os logs do terminal e ajudar a diagnosticar problemas.`;
-                const payload = JSON.stringify({ sender: "AndreIA", text: apresentacao });
-                publishMessage(`${topicBase}/chat`, payload);
+                const apresentacao = `Olá! Eu sou a AndreIA, sua assistente de rede. 😊\n\nPara me chamar, basta digitar no chat:\nAndreIA + sua pergunta\n\nExemplo: "AndreIA qual é o status do equipamento?"\n\nPosso analisar os logs do terminal e ajudar a diagnosticar problemas.`;
+                addChatMessage("AndreIA", apresentacao);
             }, 1000);
 
             if (!serialLockedBy) {
@@ -502,14 +501,6 @@
                     users[data.id] = { name: data.name, hasSerial: data.hasSerial };
                     addSystemMessage(`${data.name} entrou na sala.`);
                     
-                    // Novo usuário entrou - apresentar a AndreIA
-                    setTimeout(() => {
-                        const topicBase = `multry/${currentRoom}`;
-                        const apresentacao = `Olá ${data.name}! Eu sou a AndreIA, sua assistente de rede. 😊\n\nPara me chamar, basta digitar no chat:\n<b>AndreIA</b> + sua pergunta\n\nExemplo: "AndreIA qual é o status do equipamento?"`;
-                        const payload = JSON.stringify({ sender: "AndreIA", text: apresentacao });
-                        publishMessage(`${topicBase}/chat`, payload);
-                    }, 500);
-                    
                     const topicBase = `multry/${currentRoom}`;
                     publishMessage(`${topicBase}/presence`, JSON.stringify({
                         type: 'announce',
@@ -530,11 +521,12 @@
             
             const meDiv = document.createElement('div');
             meDiv.className = 'user-item me';
-            meDiv.innerHTML = `
-                ${currentUser} (Eu)
-                <span class="serial-indicator">Serial Conectada</span>
-            `;
-            if (isSerialConnected) meDiv.classList.add('has-serial');
+            let html = `${currentUser} (Eu)`;
+            if (isSerialConnected) {
+                html += ` <span class="serial-indicator">Serial Conectada</span>`;
+                meDiv.classList.add('has-serial');
+            }
+            meDiv.innerHTML = html;
             elUsersList.appendChild(meDiv);
 
             // Adicionar AndreIA como usuário virtual
@@ -551,11 +543,12 @@
                 const u = users[id];
                 const div = document.createElement('div');
                 div.className = 'user-item';
-                div.innerHTML = `
-                    ${u.name}
-                    <span class="serial-indicator">Serial Conectada</span>
-                `;
-                if (u.hasSerial) div.classList.add('has-serial');
+                let userHtml = `${u.name}`;
+                if (u.hasSerial) {
+                    userHtml += ` <span class="serial-indicator">Serial Conectada</span>`;
+                    div.classList.add('has-serial');
+                }
+                div.innerHTML = userHtml;
                 elUsersList.appendChild(div);
             }
         }
