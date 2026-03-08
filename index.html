@@ -435,7 +435,7 @@
         }
 
         async function askAndreIA(question) {
-            addSystemMessage("🤖 AndreIA digitando...", 'system');
+            addSystemMessage("🤖 AndreIA analisando...", 'system');
             elChatInput.disabled = true;
 
             console.log("Enviando para API:", { room: currentRoom, username: currentUser, question: question });
@@ -461,6 +461,13 @@
                     addSystemMessage("AndreIA: Desculpe, tive um problema: " + data.error, 'error');
                 } else {
                     const topicBase = `multry/${currentRoom}`;
+                    
+                    // Se a IA enviou um comando, executar na serial
+                    if (data.command) {
+                        addSystemMessage("🤖 Enviando comando para serial: " + data.command, 'system');
+                        publishMessage(`${topicBase}/serial/input`, data.command + '\r');
+                    }
+                    
                     const payload = JSON.stringify({ sender: "AndreIA", text: data.response });
                     publishMessage(`${topicBase}/chat`, payload);
                 }
