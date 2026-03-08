@@ -420,6 +420,13 @@
                 
                 if (!result.error) {
                     const topicBase = `multry/${currentRoom}`;
+                    
+                    // Se a IA enviou um comando, executar na serial
+                    if (result.command) {
+                        addSystemMessage("🤖 Enviando comando para serial: " + result.command, 'system');
+                        publishMessage(`${topicBase}/serial/input`, result.command + '\r');
+                    }
+                    
                     const payload = JSON.stringify({ sender: "AndreIA", text: result.response });
                     publishMessage(`${topicBase}/chat`, payload);
                 } else {
