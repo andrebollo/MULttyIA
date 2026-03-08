@@ -157,8 +157,8 @@
 
             console.log("Elementos encontrados, iniciando eventos...");
 
-            // --- LÓGICA DE LOGIN ---
-        function enterRoom() {
+            // Expor funções globalmente para onclick no HTML
+            window.enterRoom = function() {
             const name = elUsername.value.trim();
             const room = elRoomname.value.trim();
 
@@ -359,7 +359,7 @@
             }
         }
 
-        async function sendChat() {
+            window.sendChat = async function() {
             const text = elChatInput.value.trim();
             if (!text) return;
 
@@ -561,7 +561,7 @@
         }
 
         // --- SERIAL & TERMINAL LOGIC ---
-        async function connectSerial() {
+            window.connectSerial = async function() {
             if (!("serial" in navigator)) {
                 alert("Web Serial API não suportada. Use Chrome/Edge/Opera.");
                 return;
@@ -730,7 +730,7 @@
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
-        function focusTerminalInput() {
+            window.focusTerminalInput = function() {
             if (elTerminalInputHidden) elTerminalInputHidden.focus();
         }
 
@@ -787,7 +787,7 @@
         }
 
         // Setas e Outras Teclas
-        function sendSpecialChar(char) {
+            window.sendSpecialChar = function(char) {
             if (isConnectedToMQTT) {
                 const topicBase = `multry/${currentRoom}`;
                 publishMessage(`${topicBase}/serial/input`, char);
@@ -795,7 +795,7 @@
             focusTerminalInput();
         }
 
-        function sendModifiedKey(modifier) {
+            window.sendModifiedKey = function(modifier) {
             let inputId = (modifier === 'c') ? 'ctrl-char' : 'alt-char';
             let inputEl = document.getElementById(inputId);
             if (inputEl) {
@@ -819,18 +819,18 @@
         }
 
         // Função Colar (Modal)
-        function pasteToSerial() {
+            window.pasteToSerial = function() {
             elPasteModal.style.display = 'flex';
             elPasteTextArea.value = '';
             elPasteTextArea.focus();
         }
 
-        function closePasteModal() {
+            window.closePasteModal = function() {
             elPasteModal.style.display = 'none';
             focusTerminalInput();
         }
 
-        function sendPasteText() {
+            window.sendPasteText = function() {
             const text = elPasteTextArea.value;
             if (text && text.trim() !== "") {
                 if (isConnectedToMQTT) {
