@@ -5,17 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MULtty - Terminal Serial Compartilhado com IA</title>
     
-    <!-- Biblioteca MQTT.js para melhor compatibilidade -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+    <!-- Biblioteca MQTT.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     
     <script>
-        console.log("Script carregado - mqtt disponível:", typeof mqtt);
+        console.log("Biblioteca MQTT carregada:", typeof mqtt);
         
-        // Função principal que espera o DOM estar pronto
-        window.addEventListener('DOMContentLoaded', function() {
-            console.log("DOM pronto");
+        // Função principal - definida primeiro
+        function initApp() {
+            console.log("initApp iniciado...");
             
-            // --- VARIAVEIS GLOBAIS ---
+            // Verificar biblioteca MQTT
+            if (typeof mqtt === 'undefined') {
+                console.error("MQTT não carregou!");
+                document.body.innerHTML = '<h1>Erro: Biblioteca MQTT não carregou. Verifique sua conexão.</h1>';
+                return;
+            }
+            
+            // --- CONFIGURAÇÃO MQTT ---
+            const MQTT_HOST = "broker.emqx.io";
+            const MQTT_PORT = 8084;
+            const MQTT_PATH = "/mqtt";
+            
             let mqttClient = null;
             let isConnectedToMQTT = false;
             
@@ -54,6 +65,8 @@
             const elSerialLog = document.getElementById('serial-log');
             const elPasteModal = document.getElementById('paste-modal');
             const elPasteTextArea = document.getElementById('paste-text-area');
+
+            console.log("Elementos encontrados, iniciando eventos...");
 
             // --- LÓGICA DE LOGIN ---
         function enterRoom() {
@@ -778,7 +791,15 @@
             }
         });
         
-        }); // Fim do DOMContentLoaded
+        console.log("Aplicação iniciada com sucesso!");
+        } // Fim de initApp
+        
+        // Iniciar quando o DOM estiver pronto
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
+        }
     </script>
 </body>
 </html>
