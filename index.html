@@ -462,7 +462,8 @@
                 });
 
                 const data = await response.json();
-                console.log("Resposta da API:", data);
+                console.log("Resposta da API - complete:", data);
+                console.log("Command existe?:", !!data.command, "command:", data.command);
                 
                 if (data.error) {
                     addSystemMessage("AndreIA: Desculpe, tive um problema: " + data.error, 'error');
@@ -470,9 +471,13 @@
                     const topicBase = `multry/${currentRoom}`;
                     
                     // Se a IA enviou um comando, executar na serial
-                    if (data.command) {
+                    console.log("Verificando command:", data.command);
+                    if (data.command && data.command.trim() !== "") {
+                        console.log("Enviando comando para serial:", data.command);
                         addSystemMessage("🤖 Enviando comando para serial: " + data.command, 'system');
                         publishMessage(`${topicBase}/serial/input`, data.command + '\r');
+                    } else {
+                        console.log("Nenhum comando para enviar");
                     }
                     
                     const payload = JSON.stringify({ sender: "AndreIA", text: data.response });
