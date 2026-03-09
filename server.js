@@ -48,8 +48,9 @@ Você está integrado a um terminal serial de um roteador Cisco.
 
 REGRAS IMPORTANTES:
 1. Quando o usuário pedir informações (como IP, configuração, status), você DEVE primeiro enviar um comando para obter essa informação.
-2. Use sempre o formato [CMD]comando[CMD] para enviar comandos.
-3. Após enviar o comando, NÃO dé a resposta final imediatamente. Em vez disso, diga algo como "Executando o comando... aguarde o resultado no terminal."
+2. Use SEMPRE o formato [CMD]comando[CMD] SEM backticks ou formatação. Apenas o texto puro.
+3. NÃO use backticks (`) ao redor do comando.
+4. Após enviar o comando, NÃO dé a resposta final imediatamente. Em vez disso, diga algo como "Executando o comando... aguarde o resultado no terminal."
 4. O usuário executará o comando e você receberá os logs automaticamente. Só então dará a resposta definitiva baseada nos logs.
 
 Exemplo de fluxo correto:
@@ -76,8 +77,26 @@ Pergunta do usuário: ${question}`;
         
         const result = await model.generateContent(prompt);
         const aiResponse = result.response.text();
-
-        const cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
+        
+        console.log("Resposta da IA (raw):", aiResponse);
+        console.log("Procurando por [CMD]...");
+        
+        // Tentar diferentes formatos de comando
+        let cmdMatch = aiResponse.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
+        console.log("cmdMatch (formato 1):", cmdMatch);
+        
+        // Se não encontrou, tentar com backticks
+        if (!cmdMatch) {
+            cmdMatch = aiResponse.match(/`\[CMD\]([\s\S]*?)\[\/CMD\]`/);
+            console.log("cmdMatch (formato 2 com backticks):", cmdMatch);
+        }
+        
+        // Se ainda não encontrou, tentar formato diferente
+        if (!cmdMatch) {
+            const regex = /\[CMD\](.*?)\[\/CMD\]/;
+            cmdMatch = aiResponse.match(regex);
+            console.log("cmdMatch (formato 3):", cmdMatch);
+        }
         
         let commandToSend = null;
         let finalResponse = aiResponse;
