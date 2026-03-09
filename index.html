@@ -238,12 +238,25 @@
         
         // Função para publicar mensagem no MQTT.js
         function publishMessage(topic, payload) {
-            if (!mqttClient || !mqttClient.connected) {
-                console.log("MQTT não conectado, ignorando mensagem");
+            console.log("publishMessage chamado - topic:", topic, "payload:", payload);
+            console.log("mqttClient:", !!mqttClient, "connected:", mqttClient?.connected);
+            
+            if (!mqttClient) {
+                console.log("MQTT não conectado (mqttClient é null), ignorando mensagem");
                 return;
             }
             try {
+                // Verificar conexão de forma mais robusta
+                const isConnected = mqttClient.connected || mqttClient._connack || false;
+                console.log("Status de conexão:", isConnected);
+                
+                if (!isConnected) {
+                    console.log("MQTT não está conectado, ignorando mensagem");
+                    return;
+                }
+                
                 mqttClient.publish(topic, payload);
+                console.log("Mensagem publicada com sucesso no topic:", topic);
             } catch (e) {
                 console.error("Erro ao publicar:", e);
             }
@@ -473,9 +486,12 @@
                     // Se a IA enviou um comando, executar na serial
                     console.log("Verificando command:", data.command);
                     if (data.command && data.command.trim() !== "") {
-                        console.log("Enviando comando para serial:", data.command);
-                        addSystemMessage("🤖 Enviando comando para serial: " + data.command, 'system');
-                        publishMessage(`${topicBase}/serial/input`, data.command + '\r');
+                        const cmd = data.command.trim();
+                        console.log("Enviando comando para serial:", cmd);
+                        console.log("MQTT conectado?", isConnectedToMQTT);
+                        console.log("Topic:", `${topicBase}/serial/input`);
+                        publishMessage(`${topicBase}/serial/input`, cmd + '\r');
+                        addSystemMessage("🤖 Enviando comando: " + cmd, 'system');
                     } else {
                         console.log("Nenhum comando para enviar");
                     }
