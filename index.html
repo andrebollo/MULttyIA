@@ -351,13 +351,12 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
-                    console.log("serial/data recebido:", payload.substring(0, 50));
-                    
-                    // Exibe dados da serial para todos os usuários (via terminal)
-                    processIncomingText(payload);
-                    
-                    // Log RX no painel Serial Data
-                    logSerialData(payload, 'rx');
+                    // Exibe dados apenas para quem NÃO tem serial local
+                    // (quem tem serial já exibe em readSerialLoop)
+                    if (!isSerialConnected) {
+                        processIncomingText(payload);
+                        logSerialData(payload, 'rx');
+                    }
                     
                     // Se há pergunta pendente da IA, analisar os novos dados
                     if (iaPendente) {
@@ -717,8 +716,11 @@
                     if (done) { break; }
                     
                     if (value) {
-                        // Enviar para todos os clientes via MQTT (incluindo eu mesmo)
-                        // A exibição será feita via onMessageArrived para evitar duplicação
+                        // 1. Exibe imediatamente para o usuário local (sem esperar MQTT)
+                        processIncomingText(value);
+                        logSerialData(value, 'rx');
+                        
+                        // 2. Envia para outros clientes via MQTT
                         if (isConnectedToMQTT && currentRoom) {
                             const topicBase = `multry/${currentRoom}`;
                             publishMessage(`${topicBase}/serial/data`, value);
