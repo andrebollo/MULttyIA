@@ -33,7 +33,7 @@
         #users-panel { height: 150px; background: #252526; overflow-y: auto; border-top: 1px solid #444; }
         .user-item { padding: 5px 10px; border-bottom: 1px solid #333; }
         .user-item.me { color: var(--accent-color); font-weight: bold; }
-        #terminal-panel { height: 80%; background: var(--terminal-bg); color: var(--terminal-text); font-family: monospace; padding: 10px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        #terminal-panel { height: 100%; background: var(--terminal-bg); color: var(--terminal-text); font-family: monospace; padding: 10px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
         #terminal-output { flex: 1; overflow-y: auto; white-space: pre-wrap; overflow-x: hidden; }
         #terminal-focus-hint { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); padding: 20px; border-radius: 8px; color: #ffd700; font-size: 1.2rem; text-align: center; z-index: 10; pointer-events: none; }
         #terminal-focus-hint.visible { display: block; }
@@ -80,32 +80,10 @@
                     <button id="btn-send-chat" onclick="sendChat()" disabled>Enviar</button>
                 </div>
             </div>
-            <div id="users-panel">
-                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #444;">Usuários</div>
-                <div id="users-list"></div>
-            </div>
-        </div>
-        <div class="right-column">
-            <div id="terminal-panel" onclick="focusTerminalInput()">
-                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #333;">Terminal</div>
-                <div id="terminal-output"></div>
-                <div id="terminal-focus-hint" class="visible">Clique aqui para digitar comandos</div>
-                <div class="terminal-controls">
-                    <button class="btn-special" onclick="pasteToSerial()">Colar</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\x1b[B')">↓</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
-                    <button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
-                </div>
-            </div>
-            <input type="text" id="terminal-input-hidden" autocomplete="off">
-            <div id="serial-data-panel">
-                <div style="padding:5px;font-weight:bold;border-bottom:1px solid #333;">Serial Data</div>
-                <div id="serial-log"></div>
-            </div>
         </div>
     </div>
+    
+    <!-- Colar Modal -->
     <div id="paste-modal" onclick="if(event.target.id === 'paste-modal') closePasteModal()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <h3>Colar Script / Texto</h3>
@@ -160,7 +138,6 @@
             const elTerminalOutput = document.getElementById('terminal-output');
             const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
             const elUsersList = document.getElementById('users-list');
-            const elSerialLog = document.getElementById('serial-log');
             const elPasteModal = document.getElementById('paste-modal');
             const elPasteTextArea = document.getElementById('paste-text-area');
 
@@ -351,18 +328,10 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     console.log("serial/data recebido:", payload.substring(0, 50));
-                    // Se eu sou conectado, mando visualização local e envio para MQTT. Se for remoto, visualiza RX.
-                    if (isSerialConnected) {
-                        logSerialData(payload, 'rx'); 
-                        // Republicar para outros clientes verem
-                        const topic = `${topicBase}/serial/data`;
-                        console.log("Publicando para outros:", topic);
-                        publishMessage(topic, payload);
-                    } else {
-                        // Usuário sem serial - ignora serial/input (não é dado da serial real)
-                        // Apenas observa quem tem serial控制ando
+                    // Se não sou o conectado diretamente, exibe os dados recebidos
+                    if (!isSerialConnected) {
+                        processIncomingText(payload);
                     }
-                    
                     // Se há pergunta pendente da IA, analisar os novos dados
                     if (iaPendente) {
                         console.log("Dados recebidos, analisando para IA...");
@@ -963,12 +932,14 @@
             const timestamp = new Date().toLocaleTimeString();
             let cleanData = data.replace(/[\x00-\x1F\x7F]/g, (m) => {
                 const special = {'\t':'TAB','\n':'LF','\r':'CR', '\x7F':'DEL', '\x08':'BS', '\x1b':'ESC'};
-                return special[m] ? `{${special[m]}` : `{\\x${m.charCodeAt(0).toString(16)}}`;
+                return special[m] ? `{${special[m]}}` : `{${m.charCodeAt(0).toString(16)}}`;
             });
             div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
             div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
-            elSerialLog.appendChild(div);
-            elSerialLog.scrollTop = elSerialLog.scrollTop = elSerialLog.scrollHeight;
+            if (elTerminalOutput) {
+                elTerminalOutput.appendChild(div);
+                elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+            }
         }
 
         function escapeHtml(text) {
