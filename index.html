@@ -248,25 +248,12 @@
         
         // Função para publicar mensagem no MQTT.js
         function publishMessage(topic, payload) {
-            console.log("publishMessage chamado - topic:", topic, "payload:", payload);
-            console.log("mqttClient:", !!mqttClient, "connected:", mqttClient?.connected);
-            
-            if (!mqttClient) {
-                console.log("MQTT não conectado (mqttClient é null), ignorando mensagem");
+            if (!mqttClient || !mqttClient.connected) {
                 return;
             }
+            
             try {
-                // Verificar conexão de forma mais robusta
-                const isConnected = mqttClient.connected || mqttClient._connack || false;
-                console.log("Status de conexão:", isConnected);
-                
-                if (!isConnected) {
-                    console.log("MQTT não está conectado, ignorando mensagem");
-                    return;
-                }
-                
-                mqttClient.publish(topic, payload);
-                console.log("Mensagem publicada com sucesso no topic:", topic);
+                mqttClient.publish(topic, payload, { qos: 1 });
             } catch (e) {
                 console.error("Erro ao publicar:", e);
             }
@@ -351,6 +338,7 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
+                    console.log("RX via MQTT:", payload.length, "chars, isSerialConnected:", isSerialConnected);
                     // Exibe dados apenas para quem NÃO tem serial local
                     // (quem tem serial já exibe em readSerialLoop)
                     if (!isSerialConnected) {
@@ -360,7 +348,6 @@
                     
                     // Se há pergunta pendente da IA, analisar os novos dados
                     if (iaPendente) {
-                        console.log("Dados recebidos, analisando para IA...");
                         analisarParaIA(payload);
                     }
                 }
@@ -723,6 +710,7 @@
                         // 2. Envia para outros clientes via MQTT
                         if (isConnectedToMQTT && currentRoom) {
                             const topicBase = `multry/${currentRoom}`;
+                            console.log("Publicando TX:", value.length, "chars");
                             publishMessage(`${topicBase}/serial/data`, value);
                         }
                     }
@@ -778,26 +766,10 @@
 
         // --- VISUALIZAÇÃO E PROCESSAMENTO DE TEXTO (RX) ---
         function processIncomingText(text) {
-            for (let i =0; i < text.length; i++) {
-                const char = text.charAt(i);
-                const code = text.charCodeAt(i);
-
-                // Filtro de caracteres de controle:
-                // TAB(9), LF(10), CR(13), BS(8), DEL(127) ou imprimíveis (>31)
-                if (code === 9 || code === 10 || code === 13 || code === 8 || code === 127) {
-                    if (code === 8 || code === 127) {
-                        executeBackspaceOnDOM();
-                    } else {
-                        const span = document.createElement('span');
-                        span.textContent = char;
-                        elTerminalOutput.appendChild(span);
-                    }
-                } else if (code >= 32) {
-                    const span = document.createElement('span');
-                    span.textContent = char;
-                    elTerminalOutput.appendChild(span);
-                }
-            }
+            // Usar textContent diretamente para melhor performance
+            const span = document.createElement('span');
+            span.textContent = text;
+            elTerminalOutput.appendChild(span);
             elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
         }
 
