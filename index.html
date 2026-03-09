@@ -33,7 +33,7 @@
         #users-panel { height: 150px; background: #252526; overflow-y: auto; border-top: 1px solid #444; }
         .user-item { padding: 5px 10px; border-bottom: 1px solid #333; }
         .user-item.me { color: var(--accent-color); font-weight: bold; }
-        #terminal-panel { height: 100%; background: var(--terminal-bg); color: var(--terminal-text); font-family: monospace; padding: 10px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+        #terminal-panel { flex: 1; background: var(--terminal-bg); color: var(--terminal-text); font-family: monospace; padding: 10px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
         #terminal-output { flex: 1; overflow-y: auto; white-space: pre-wrap; overflow-x: hidden; }
         #terminal-focus-hint { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); padding: 20px; border-radius: 8px; color: #ffd700; font-size: 1.2rem; text-align: center; z-index: 10; pointer-events: none; }
         #terminal-focus-hint.visible { display: block; }
@@ -100,6 +100,10 @@
                 </div>
                 <input type="text" id="terminal-input-hidden" style="position:absolute;opacity:0;top:-1000px;">
             </div>
+            <div id="serial-data-panel">
+                <div style="padding:5px;font-weight:bold;border-bottom:1px solid #333;">Serial Data (TX/RX)</div>
+                <div id="serial-log"></div>
+            </div>
         </div>
     
     <!-- Colar Modal -->
@@ -157,6 +161,7 @@
             const elTerminalOutput = document.getElementById('terminal-output');
             const elTerminalInputHidden = document.getElementById('terminal-input-hidden');
             const elUsersList = document.getElementById('users-list');
+            const elSerialLog = document.getElementById('serial-log');
             const elPasteModal = document.getElementById('paste-modal');
             const elPasteTextArea = document.getElementById('paste-text-area');
 
@@ -351,6 +356,9 @@
                     // Exibe dados da serial para todos os usuários (via terminal)
                     processIncomingText(payload);
                     
+                    // Log RX no painel Serial Data
+                    logSerialData(payload, 'rx');
+                    
                     // Se há pergunta pendente da IA, analisar os novos dados
                     if (iaPendente) {
                         console.log("Dados recebidos, analisando para IA...");
@@ -364,6 +372,8 @@
                         return;
                     }
                     serialWriter.write(payload);
+                    // Log TX no painel Serial Data
+                    logSerialData(payload, 'tx');
                 }
                 else if (topic === `${topicBase}/serial/lock`) {
                     const data = JSON.parse(payload);
@@ -839,6 +849,8 @@
                         if (isConnectedToMQTT) {
                             const topicBase = `multry/${currentRoom}`;
                             publishMessage(`${topicBase}/serial/input`, text);
+                            // Log TX localmente
+                            logSerialData(text, 'tx');
                         }
                         // Limpa campo
                         e.target.value = '';
@@ -857,17 +869,20 @@
                     // Envia Backspace
                     if (isConnectedToMQTT) {
                         publishMessage(`${topicBase}/serial/input`, '\x08'); 
+                        logSerialData('\x08', 'tx');
                     }
                     e.target.value = ''; 
                 } else if (e.key === 'Tab') {
                     e.preventDefault();
                     if (isConnectedToMQTT) {
                         publishMessage(`${topicBase}/serial/input`, '\t');
+                        logSerialData('\t', 'tx');
                     }
                     e.target.value = '';
                 } else if (e.key === 'Enter') {
                     if (isConnectedToMQTT) {
                         publishMessage(`${topicBase}/serial/input`, '\r');
+                        logSerialData('\r', 'tx');
                     }
                     e.target.value = '';
                 }
@@ -879,6 +894,7 @@
             if (isConnectedToMQTT) {
                 const topicBase = `multry/${currentRoom}`;
                 publishMessage(`${topicBase}/serial/input`, char);
+                logSerialData(char, 'tx');
             }
             focusTerminalInput();
         }
@@ -899,6 +915,7 @@
                     if (payload && isConnectedToMQTT) {
                         const topicBase = `multry/${currentRoom}`;
                         publishMessage(`${topicBase}/serial/input`, payload);
+                        logSerialData(payload, 'tx');
                         inputEl.value = '';
                         focusTerminalInput();
                     }
@@ -951,9 +968,9 @@
             });
             div.className = (direction === 'tx') ? 'log-tx' : 'log-rx';
             div.textContent = `[${timestamp}] ${direction === 'tx' ? '>>' : '<<'} ${cleanData}`;
-            if (elTerminalOutput) {
-                elTerminalOutput.appendChild(div);
-                elTerminalOutput.scrollTop = elTerminalOutput.scrollHeight;
+            if (elSerialLog) {
+                elSerialLog.appendChild(div);
+                elSerialLog.scrollTop = elSerialLog.scrollHeight;
             }
         }
 
