@@ -347,10 +347,10 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     console.log("serial/data recebido:", payload.substring(0, 50));
-                    // Se não sou o conectado diretamente, exibe os dados recebidos
-                    if (!isSerialConnected) {
-                        processIncomingText(payload);
-                    }
+                    
+                    // Exibe dados da serial para todos os usuários (via terminal)
+                    processIncomingText(payload);
+                    
                     // Se há pergunta pendente da IA, analisar os novos dados
                     if (iaPendente) {
                         console.log("Dados recebidos, analisando para IA...");
@@ -364,7 +364,6 @@
                         return;
                     }
                     serialWriter.write(payload);
-                    logSerialData(payload, 'tx');
                 }
                 else if (topic === `${topicBase}/serial/lock`) {
                     const data = JSON.parse(payload);
@@ -708,11 +707,8 @@
                     if (done) { break; }
                     
                     if (value) {
-                        // 1. Visual Local (Imediato)
-                        processIncomingText(value);
-                        logSerialData(value, 'rx');
-                        
-                        // 2. Enviar para outros clientes via MQTT
+                        // Enviar para todos os clientes via MQTT (incluindo eu mesmo)
+                        // A exibição será feita via onMessageArrived para evitar duplicação
                         if (isConnectedToMQTT && currentRoom) {
                             const topicBase = `multry/${currentRoom}`;
                             publishMessage(`${topicBase}/serial/data`, value);
