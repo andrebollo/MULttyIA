@@ -442,9 +442,35 @@
                     if (!comandoExtraido) {
                         console.log("2. Tentando extrair da resposta...");
                         console.log("3. Response completo:", result.response);
-                        const match = result.response.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
-                        console.log("4. Match resultado:", match);
-                        if (match) {
+                        
+                        // Tentar diferentes padrões
+                        const patterns = [
+                            /\[CMD\](.*?)\[\/CMD\]/,
+                            /\[CMD\](.*?)\[/,
+                            /\[CMD\]\s*(.*?)\s*\[/,
+                            /CMD\s*\]\s*(.*?)\s*\[/,
+                        ];
+                        
+                        let match = null;
+                        for (const pattern of patterns) {
+                            match = result.response.match(pattern);
+                            if (match) {
+                                console.log("4. Match encontrado com padrão:", pattern, "=>", match);
+                                break;
+                            }
+                        }
+                        
+                        // Se ainda não encontrou, procurar manualmente
+                        if (!match) {
+                            const idx = result.response.indexOf('[CMD]');
+                            if (idx !== -1) {
+                                const endIdx = result.response.indexOf('[', idx + 5);
+                                if (endIdx !== -1) {
+                                    comandoExtraido = result.response.substring(idx + 5, endIdx).trim();
+                                    console.log("5. Comando extraído manualmente:", comandoExtraido);
+                                }
+                            }
+                        } else if (match) {
                             comandoExtraido = match[1].trim();
                             console.log("5. Comando extraído:", comandoExtraido);
                         }
