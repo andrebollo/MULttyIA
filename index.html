@@ -148,6 +148,7 @@
             // Variável para controlar pergunta pendente da IA
             let iaPendente = null;
             let iaPerguntaOriginal = "";
+            let iaProcessando = false; // Evita múltiplas respostas da IA
             
             const elUsername = document.getElementById('username');
             const elRoomname = document.getElementById('roomname');
@@ -356,11 +357,6 @@
                     } else {
                         console.log("Usuário tem serial - já exibiu localmente");
                     }
-                    
-                    // Se há pergunta pendente da IA, analisar os novos dados
-                    if (iaPendente) {
-                        analisarParaIA(payload);
-                    }
                 }
                 else if (topic === `${topicBase}/serial/input`) {
                     // Se não tem serial conectada, ignora
@@ -468,11 +464,13 @@
                         // Limpar pendente
                         iaPendente = null;
                         iaPerguntaOriginal = "";
+                        iaProcessando = false;
                     }
                 }
             } catch (err) {
                 console.error("Erro ao analisar para IA:", err);
                 iaPendente = null;
+                iaProcessando = false;
             }
         }
 
@@ -480,11 +478,22 @@
             console.log("handleAIQuery recebido:", data);
             const { sender, question, logs } = data;
             
+            // Verifica se já está processando uma query
+            if (iaProcessando) {
+                console.log("IA já está processando, ignorando...");
+                return;
+            }
+            iaProcessando = true;
+            
             // Adicionar um delay aleatório para evitar múltiplas respostas
-            // Apenas um cliente (o primeiro que responder) enviará a resposta
             const delay = Math.random() * 500;
             
             await new Promise(r => setTimeout(r, delay));
+            
+            // Verifica novamente após o delay
+            if (iaProcessando === false) {
+                return;
+            }
             
             try {
                 const logsText = logs || "Sem logs disponíveis";
@@ -569,6 +578,7 @@
             }
 
             elChatInput.disabled = false;
+            iaProcessando = false; // Libera o lock para próxima query
         }
 
         if (elChatInput) {
