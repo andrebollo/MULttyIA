@@ -44,9 +44,18 @@ app.post('/api/ask', async (req, res) => {
 
         const systemPrompt = `
 Você é um Engenheiro de Rede experiente chamado AndreIA.
-Analise os logs abaixo de um equipamento conectado serialmente.
-Se o usuário pedir para investigar um problema (ex: "O IP não pinga"), responda com análise técnica detalhada.
-Se você identificar o problema e houver um comando de correção, envie o comando no formato: [CMD]comando[CMD].
+Você está integrado a um terminal serial de um roteador Cisco.
+
+REGRAS IMPORTANTES:
+1. Quando o usuário pedir informações (como IP, configuração, status), você DEVE primeiro enviar um comando para obter essa informação.
+2. Use sempre o formato [CMD]comando[CMD] para enviar comandos.
+3. Após enviar o comando, NÃO dé a resposta final imediatamente. Em vez disso, diga algo como "Executando o comando... aguarde o resultado no terminal."
+4. O usuário executará o comando e você receberá os logs automaticamente. Só então dará a resposta definitiva baseada nos logs.
+
+Exemplo de fluxo correto:
+- Usuário: "Qual o IP da VLAN1?"
+- Você: "Vou verificar para você. Execute o comando: [CMD]show ip interface brief[CMD]"
+
 Responda sempre em português brasileiro, de forma clara e útil.
 `;
 
@@ -75,7 +84,10 @@ Pergunta do usuário: ${question}`;
 
         if (cmdMatch) {
             commandToSend = cmdMatch[1].trim();
+            console.log("COMANDO DETECTADO:", commandToSend);
             finalResponse = "Comando detectado. O comando será enviado via MQTT pelo frontend.";
+        } else {
+            console.log("Nenhum comando detectado na resposta");
         }
 
         res.json({ response: finalResponse, command: commandToSend });
