@@ -350,11 +350,13 @@
                     handlePresence(data);
                 }
                 else if (topic === `${topicBase}/serial/data`) {
+                    console.log("serial/data recebido:", payload.substring(0, 50));
                     // Se eu sou conectado, mando visualização local e envio para MQTT. Se for remoto, visualiza RX.
                     if (isSerialConnected) {
                         logSerialData(payload, 'rx'); 
-                        // O backend cuida de enviar o RX para os outros.
+                        // Republicar para outros clientes verem
                         const topic = `${topicBase}/serial/data`;
+                        console.log("Publicando para outros:", topic);
                         publishMessage(topic, payload);
                     } else {
                         processIncomingText(payload);
@@ -717,20 +719,12 @@
                     if (value) {
                         // 1. Visual Local (Imediato)
                         processIncomingText(value);
+                        logSerialData(value, 'rx');
                         
-                        // 2. Buffering de Envio para IA
-                        serialOutBuffer += value;
-                        
-                        if (flushTimer) clearTimeout(flushTimer);
-                        
-                        // Envio se buffer cheio ou lotado de 2KB
-                        if (serialOutBuffer.length >= 4096) {
-                            flushSerialBuffer(true);
-                        } else {
-                            flushTimer = setTimeout(() => {
-                                flushSerialBuffer(true);
-                            }, FLUSH_INTERVAL); // 2 segundos para aguardar um pouco de tráfego
-                            elBtnConnectSerial.disabled = false; 
+                        // 2. Enviar para outros clientes via MQTT
+                        if (isConnectedToMQTT && currentRoom) {
+                            const topicBase = `multry/${currentRoom}`;
+                            publishMessage(`${topicBase}/serial/data`, value);
                         }
                     }
                 }
