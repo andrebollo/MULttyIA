@@ -253,7 +253,11 @@
             }
             
             try {
-                mqttClient.publish(topic, payload, { qos: 1 });
+                mqttClient.publish(topic, payload, { qos: 1 }, (err) => {
+                    if (err) {
+                        console.error("Erro no publish:", err);
+                    }
+                });
             } catch (e) {
                 console.error("Erro ao publicar:", e);
             }
@@ -339,11 +343,18 @@
                 }
                 else if (topic === `${topicBase}/serial/data`) {
                     console.log("RX via MQTT:", payload.length, "chars, isSerialConnected:", isSerialConnected);
-                    // Exibe dados apenas para quem NÃO tem serial local
-                    // (quem tem serial já exibe em readSerialLoop)
+                    
+                    // Exibe dados para quem NÃO tem serial local
                     if (!isSerialConnected) {
-                        processIncomingText(payload);
-                        logSerialData(payload, 'rx');
+                        console.log("Exibindo para usuário sem serial, elTerminalOutput:", !!elTerminalOutput);
+                        if (elTerminalOutput) {
+                            processIncomingText(payload);
+                        }
+                        if (elSerialLog) {
+                            logSerialData(payload, 'rx');
+                        }
+                    } else {
+                        console.log("Usuário tem serial - já exibiu localmente");
                     }
                     
                     // Se há pergunta pendente da IA, analisar os novos dados
@@ -695,6 +706,22 @@
             }
         }
 
+        let serialBuffer = "";
+        let serialBufferTimer = null;
+        
+        function flushSerialBuffer(force = false) {
+            if (serialBuffer.length > 0 && isConnectedToMQTT && currentRoom) {
+                const topicBase = `multry/${currentRoom}`;
+                console.log("Flushing buffer:", serialBuffer.length, "chars");
+                publishMessage(`${topicBase}/serial/data`, serialBuffer);
+                serialBuffer = "";
+            }
+            if (serialBufferTimer) {
+                clearTimeout(serialBufferTimer);
+                serialBufferTimer = null;
+            }
+        }
+        
         async function readSerialLoop() {
             try {
                 while (serialPort.readable && isSerialConnected) {
@@ -707,11 +734,22 @@
                         processIncomingText(value);
                         logSerialData(value, 'rx');
                         
-                        // 2. Envia para outros clientes via MQTT
+                        // 2. Envia para outros clientes via MQTT (com buffer para evitar perda)
                         if (isConnectedToMQTT && currentRoom) {
-                            const topicBase = `multry/${currentRoom}`;
-                            console.log("Publicando TX:", value.length, "chars");
-                            publishMessage(`${topicBase}/serial/data`, value);
+                            serialBuffer += value;
+                            
+                            // Envia o buffer a cada 50ms ou quando tiver muitos dados
+                            if (!serialBufferTimer) {
+                                serialBufferTimer = setTimeout(() => {
+                                    if (serialBuffer.length > 0) {
+                                        const topicBase = `multry/${currentRoom}`;
+                                        console.log("Publicando TX buffer:", serialBuffer.length, "chars");
+                                        publishMessage(`${topicBase}/serial/data`, serialBuffer);
+                                        serialBuffer = "";
+                                    }
+                                    serialBufferTimer = null;
+                                }, 50);
+                            }
                         }
                     }
                 }
