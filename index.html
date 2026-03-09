@@ -80,8 +80,27 @@
                     <button id="btn-send-chat" onclick="sendChat()" disabled>Enviar</button>
                 </div>
             </div>
+            <div id="users-panel">
+                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #444;">Usuários</div>
+                <div id="users-list"></div>
+            </div>
         </div>
-    </div>
+        <div class="right-column">
+            <div id="terminal-panel" onclick="focusTerminalInput()">
+                <div style="padding:10px;font-weight:bold;border-bottom:1px solid #333;">Terminal</div>
+                <div id="terminal-output"></div>
+                <div id="terminal-focus-hint" class="visible">Clique aqui para digitar comandos</div>
+                <div class="terminal-controls">
+                    <button class="btn-special" onclick="pasteToSerial()">Colar</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\t')">TAB</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[A')">↑</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[B')">↓</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[C')">→</button>
+                    <button class="btn-special" onclick="sendSpecialChar('\x1b[D')">←</button>
+                </div>
+                <input type="text" id="terminal-input-hidden" style="position:absolute;opacity:0;top:-1000px;">
+            </div>
+        </div>
     
     <!-- Colar Modal -->
     <div id="paste-modal" onclick="if(event.target.id === 'paste-modal') closePasteModal()">
