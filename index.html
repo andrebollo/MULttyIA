@@ -434,10 +434,22 @@
                 if (!result.error) {
                     const topicBase = `multry/${currentRoom}`;
                     
+                    // Extrair comando da resposta (já que backend não está funcionando)
+                    let comandoExtraido = result.command;
+                    
+                    // Se não veio do backend, tenta extrair da resposta
+                    if (!comandoExtraido) {
+                        const match = result.response.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
+                        if (match) {
+                            comandoExtraido = match[1].trim();
+                            console.log("Comando extraído da resposta:", comandoExtraido);
+                        }
+                    }
+                    
                     // Se a IA enviou um comando, executar na serial
-                    if (result.command) {
-                        addSystemMessage("🤖 Enviando comando para serial: " + result.command, 'system');
-                        publishMessage(`${topicBase}/serial/input`, result.command + '\r');
+                    if (comandoExtraido) {
+                        addSystemMessage("🤖 Enviando comando para serial: " + comandoExtraido, 'system');
+                        publishMessage(`${topicBase}/serial/input`, comandoExtraido + '\r');
                     }
                     
                     const payload = JSON.stringify({ sender: "AndreIA", text: result.response });
@@ -476,24 +488,28 @@
 
                 const data = await response.json();
                 console.log("Resposta da API - complete:", data);
-                console.log("Command existe?:", !!data.command, "command:", data.command);
                 
                 if (data.error) {
                     addSystemMessage("AndreIA: Desculpe, tive um problema: " + data.error, 'error');
                 } else {
                     const topicBase = `multry/${currentRoom}`;
                     
+                    // Extrair comando da resposta (já que backend pode não funcionar)
+                    let comandoExtraido = data.command;
+                    
+                    // Se não veio do backend, tenta extrair da resposta
+                    if (!comandoExtraido) {
+                        const match = data.response.match(/\[CMD\]([\s\S]*?)\[\/CMD\]/);
+                        if (match) {
+                            comandoExtraido = match[1].trim();
+                            console.log("Comando extraído da resposta:", comandoExtraido);
+                        }
+                    }
+                    
                     // Se a IA enviou um comando, executar na serial
-                    console.log("Verificando command:", data.command);
-                    if (data.command && data.command.trim() !== "") {
-                        const cmd = data.command.trim();
-                        console.log("Enviando comando para serial:", cmd);
-                        console.log("MQTT conectado?", isConnectedToMQTT);
-                        console.log("Topic:", `${topicBase}/serial/input`);
-                        publishMessage(`${topicBase}/serial/input`, cmd + '\r');
-                        addSystemMessage("🤖 Enviando comando: " + cmd, 'system');
-                    } else {
-                        console.log("Nenhum comando para enviar");
+                    if (comandoExtraido) {
+                        addSystemMessage("🤖 Enviando comando: " + comandoExtraido, 'system');
+                        publishMessage(`${topicBase}/serial/input`, comandoExtraido + '\r');
                     }
                     
                     const payload = JSON.stringify({ sender: "AndreIA", text: data.response });
