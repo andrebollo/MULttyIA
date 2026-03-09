@@ -394,6 +394,13 @@
             const payload = JSON.stringify({ sender: currentUser, text: text });
             publishMessage(`${topicBase}/chat`, payload);
             elChatInput.value = '';
+            
+            // Verificar se é OK para analisar resultado do comando
+            if (iaPendente && text.toLowerCase() === 'ok') {
+                console.log("Usuário digitou OK, analisando resultados...");
+                await analisarParaIA("comando finalizado");
+                return;
+            }
 
             // Verificar se é mensagem para AndreIA
             if (text.toLowerCase().startsWith('andreia')) {
@@ -425,8 +432,10 @@
             
             console.log("Analisando dados para IA pendente...");
             
-            // Esperar um pouco para acumular mais dados
-            await new Promise(r => setTimeout(r, 2000));
+            // Se não foi chamado pelo OK, esperar um pouco
+            if (novosDados !== "comando finalizado") {
+                await new Promise(r => setTimeout(r, 2000));
+            }
             
             const todosLogs = document.getElementById('terminal-output').textContent;
             
@@ -547,7 +556,7 @@
                         iaPendente = true;
                         iaPerguntaOriginal = sender + " perguntou: " + question;
                         
-                        addSystemMessage("🤖 Executando comando... aguarde o resultado no terminal.", 'system');
+                        addSystemMessage("🤖 Executando comando... Quando terminar, digite **OK** no chat para eu analisar o resultado.", 'system');
                         publishMessage(`${topicBase}/serial/input`, comandoExtraido + '\r');
                     } else {
                         console.log("6. Nenhum comando encontrado - respondendo normalmente");
