@@ -370,10 +370,13 @@
                     }
                 }
                 else if (topic === `${topicBase}/serial/input`) {
-                    if (isSerialConnected && serialWriter) {
-                        serialWriter.write(payload);
-                        logSerialData(payload, 'tx');
+                    // Se não tem serial conectada, ignora (não republica)
+                    if (!isSerialConnected || !serialWriter) {
+                        console.log("Ignorando serial/input - não tenho serial");
+                        return;
                     }
+                    serialWriter.write(payload);
+                    logSerialData(payload, 'tx');
                 }
                 else if (topic === `${topicBase}/serial/lock`) {
                     const data = JSON.parse(payload);
@@ -849,6 +852,11 @@
                 if (e.inputType === "insertText") {
                     const text = e.data || e.target.value;
                     if (text) {
+                        if (!isSerialConnected) {
+                            addSystemMessage("⚠️ Você não tem serial conectada. Apenas observe.", 'system');
+                            e.target.value = '';
+                            return;
+                        }
                         if (isConnectedToMQTT) {
                             const topicBase = `multry/${currentRoom}`;
                             publishMessage(`${topicBase}/serial/input`, text);
@@ -861,6 +869,8 @@
 
             // Evento KeyDown (Enter, Backspace, Tab, Setas)
             elTerminalInputHidden.addEventListener('keydown', (e) => {
+                if (!isSerialConnected) return;
+                
                 const topicBase = `multry/${currentRoom}`;
 
                 if (e.key === 'Backspace') {
@@ -889,6 +899,10 @@
 
         // Setas e Outras Teclas
             window.sendSpecialChar = function(char) {
+            if (!isSerialConnected) {
+                addSystemMessage("⚠️ Você não tem serial conectada.", 'system');
+                return;
+            }
             if (isConnectedToMQTT) {
                 const topicBase = `multry/${currentRoom}`;
                 publishMessage(`${topicBase}/serial/input`, char);
@@ -897,6 +911,10 @@
         }
 
             window.sendModifiedKey = function(modifier) {
+            if (!isSerialConnected) {
+                addSystemMessage("⚠️ Você não tem serial conectada.", 'system');
+                return;
+            }
             let inputId = (modifier === 'c') ? 'ctrl-char' : 'alt-char';
             let inputEl = document.getElementById(inputId);
             if (inputEl) {
@@ -921,6 +939,10 @@
 
         // Função Colar (Modal)
             window.pasteToSerial = function() {
+            if (!isSerialConnected) {
+                addSystemMessage("⚠️ Você não tem serial conectada.", 'system');
+                return;
+            }
             elPasteModal.style.display = 'flex';
             elPasteTextArea.value = '';
             elPasteTextArea.focus();
@@ -932,6 +954,10 @@
         }
 
             window.sendPasteText = function() {
+            if (!isSerialConnected) {
+                addSystemMessage("⚠️ Você não tem serial conectada.", 'system');
+                return;
+            }
             const text = elPasteTextArea.value;
             if (text && text.trim() !== "") {
                 if (isConnectedToMQTT) {
